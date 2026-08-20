@@ -1,7 +1,7 @@
 import "./style.css";
-import { calculateNextDueDate, createChore } from "./domain/chore.js";
+import { calculateNextDueDate, completeChore, createChore } from "./domain/chore.js";
 import { CHORE_CATALOG } from "./domain/choreCatalog.js";
-import { loadChores, saveChores } from "./data/choreRepository.js";
+import { loadChores, saveChores, updateChore } from "./data/choreRepository.js";
 
 const butlerImage = new URL("../assets/butler-variants/main_default_pose.png", import.meta.url).href;
 const app = document.querySelector("#app");
@@ -21,6 +21,12 @@ function addLocalDays(date, days) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function formatKoreanDate(dateOnly) {
+  if (!dateOnly) return "기록 없음";
+  const [year, month, day] = dateOnly.split("-").map(Number);
+  return `${year}년 ${month}월 ${day}일`;
 }
 
 function escapeHtml(value) {
@@ -59,7 +65,7 @@ function renderCalendar(chores) {
       <div class="calendar-cell${outsideMonth ? " is-outside" : ""}" data-date="${dateOnly}">
         <span class="calendar-day${dateOnly === today ? " is-today" : ""}">${cellDate.getDate()}</span>
         <div class="calendar-events">
-          ${events.slice(0, 2).map((chore) => `<span class="calendar-event" title="${escapeHtml(chore.name)}">${escapeHtml(chore.name)}</span>`).join("")}
+          ${events.slice(0, 2).map((chore) => `<button class="calendar-event" type="button" data-chore-id="${escapeHtml(chore.id)}" title="${escapeHtml(chore.name)}">${escapeHtml(chore.name)}</button>`).join("")}
           ${events.length > 2 ? `<span class="calendar-more">+${events.length - 2}</span>` : ""}
         </div>
       </div>`;
@@ -126,6 +132,60 @@ function renderHome() {
   });
   app.querySelectorAll("[data-route]").forEach((element) => {
     element.addEventListener("click", () => navigate(element.dataset.route));
+  });
+  app.querySelectorAll(".calendar-event[data-chore-id]").forEach((eventButton) => {
+    eventButton.addEventListener("click", () => {
+      navigate(`/chores/${encodeURIComponent(eventButton.dataset.choreId)}`);
+    });
+  });
+}
+
+function renderChoreDetail(choreId) {
+  const chore = loadChores().find((item) => item.id === choreId);
+
+  if (!chore) {
+    navigate("/");
+    return;
+  }
+
+  const catalogItem = CHORE_CATALOG.find((item) => item.id === chore.id);
+  app.innerHTML = `
+    <main class="app-shell detail-page">
+      <header class="detail-header">
+        <button class="back-button" type="button" data-route="/" aria-label="캘린더로 돌아가기">‹</button>
+        <h1>일정 상세</h1>
+      </header>
+      <section class="detail-card" aria-labelledby="chore-detail-title">
+        <div class="detail-title-row">
+          <span class="detail-icon" aria-hidden="true">${catalogItem?.icon ?? "✓"}</span>
+          <h2 id="chore-detail-title">${escapeHtml(chore.name)}</h2>
+        </div>
+        <dl class="detail-list">
+          <div>
+            <dt>최근 완료일</dt>
+            <dd>${formatKoreanDate(chore.lastCompletedDate)}</dd>
+          </div>
+          <div>
+            <dt>주기</dt>
+            <dd>${chore.intervalValue}${UNIT_LABELS[chore.intervalUnit]}</dd>
+          </div>
+          <div>
+            <dt>현재 예정일</dt>
+            <dd>${formatKoreanDate(chore.nextDueDate)}</dd>
+          </div>
+        </dl>
+        <p class="detail-help">완료한 날을 기준으로 다음 일정을 자동으로 계산해드려요.</p>
+        <button class="primary-button complete-button" type="button" data-action="complete-today">오늘 완료했어</button>
+      </section>
+    </main>`;
+
+  app.querySelector("[data-route]").addEventListener("click", () => navigate("/"));
+  app.querySelector("[data-action='complete-today']").addEventListener("click", () => {
+    const completed = completeChore(chore, toDateOnly(new Date()));
+    updateChore(completed);
+    const [year, month] = completed.nextDueDate.split("-").map(Number);
+    calendarMonth = new Date(year, month - 1, 1);
+    navigate("/");
   });
 }
 
@@ -305,7 +365,9 @@ function renderRegister() {
 }
 
 function renderRoute() {
+  const detailMatch = window.location.pathname.match(/^\/chores\/([^/]+)$/);
   if (window.location.pathname === "/register") renderRegister();
+  else if (detailMatch) renderChoreDetail(decodeURIComponent(detailMatch[1]));
   else renderHome();
 }
 
