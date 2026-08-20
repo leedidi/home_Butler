@@ -8,6 +8,7 @@ import {
 } from "./domain/chore.js";
 import { CHORE_CATALOG } from "./domain/choreCatalog.js";
 import { loadChores, saveChores, updateChore } from "./data/choreRepository.js";
+import { shouldShowDailySplash } from "./ui/dailySplash.js";
 import {
   enablePushNotifications,
   getPushEnabled,
@@ -144,7 +145,7 @@ function renderHome() {
             ${upcoming.map((chore) => `<li><span>${escapeHtml(chore.name)}</span><time datetime="${chore.nextDueDate}">${chore.nextDueDate.slice(5).replace("-", ".")}</time></li>`).join("")}
           </ul>
         `}
-        <button class="primary-button compact" type="button" data-route="/register">+ 관리할 집안일 등록</button>
+        <button class="primary-button compact" type="button" data-route="/manage">집안일 관리 목록</button>
         <div class="notification-control">
           <button class="notification-button" type="button" data-action="enable-notifications">🔔 알림 받기</button>
           <p class="notification-status" role="status"></p>
@@ -288,16 +289,26 @@ function renderChoreDetail(choreId) {
   }
 }
 
-function createRegistrationState() {
-  return CHORE_CATALOG.map((item) => ({
-    ...item,
-    selected: false,
-    intervalValue: item.recommendedIntervalValue,
-    intervalUnit: item.recommendedIntervalUnit,
-    lastCompletedDate: "",
-    unknownLastCompletedDate: false,
-    firstDueDate: "",
-  }));
+function createManagementState() {
+  const existingById = new Map(loadChores().map((chore) => [chore.id, chore]));
+  return CHORE_CATALOG.map((item) => {
+    const existing = existingById.get(item.id);
+    if (!existing) return null;
+    return {
+      ...item,
+      selected: true,
+      registered: true,
+      expanded: false,
+      intervalValue: existing?.intervalValue ?? item.recommendedIntervalValue,
+      intervalUnit: existing?.intervalUnit ?? item.recommendedIntervalUnit,
+      lastCompletedDate: existing?.lastCompletedDate ?? "",
+      unknownLastCompletedDate: existing ? !existing.lastCompletedDate : false,
+      firstDueDate: existing && !existing.lastCompletedDate ? existing.nextDueDate : "",
+      createdAt: existing?.createdAt,
+      reminderSnoozedUntil: existing?.reminderSnoozedUntil ?? null,
+      isExample: existing?.isExample ?? false,
+    };
+  }).filter(Boolean);
 }
 
 function firstScheduleDate(action) {
@@ -308,6 +319,226 @@ function firstScheduleDate(action) {
     return toDateOnly(addLocalDays(today, daysUntilSaturday));
   }
   return toDateOnly(addLocalDays(today, 7));
+}
+
+function draftNextDueDate(item) {
+  if (item.unknownLastCompletedDate) return item.firstDueDate;
+  if (!item.lastCompletedDate || !Number.isInteger(item.intervalValue) || item.intervalValue < 1) return "";
+  try {
+    return calculateNextDueDate(item.lastCompletedDate, item.intervalValue, item.intervalUnit);
+  } catch {
+    return "";
+  }
+}
+
+function shortDate(dateOnly, emptyLabel = "미정") {
+  return dateOnly ? dateOnly.slice(5).replace("-", ".") : emptyLabel;
+}
+
+function renderManagementCard(item) {
+  const nextDueDate = draftNextDueDate(item);
+  const marker = item.registered ? (item.expanded ? "⌃" : "⌄") : (item.selected ? "−" : "+");
+  return `
+    <article class="chore-card theme-${item.theme}${item.selected ? " is-selected" : ""}${item.registered ? " is-registered" : ""}" data-chore-id="${item.id}">
+      <button class="chore-selector" type="button" data-action="toggle-chore" aria-expanded="${item.expanded}">
+        <span class="selection-circle" aria-hidden="true">${marker}</span>
+        <span class="chore-icon" aria-hidden="true">${item.icon}</span>
+        <span class="chore-name">${item.name}</span>
+        ${item.registered ? `<span class="registered-badge">관리 중</span>` : ""}
+      </button>
+      ${item.selected && item.expanded ? `
+        <div class="chore-settings">
+          <div class="schedule-summary" aria-label="${item.name} 일정 요약">
+            <div><span>주기</span><strong>${item.intervalValue}${UNIT_LABELS[item.intervalUnit]}</strong></div>
+            <div><span>최근 완료일</span><strong>${item.unknownLastCompletedDate ? "기억 안 남" : shortDate(item.lastCompletedDate)}</strong></div>
+            <div><span>다음 예정일</span><strong>${shortDate(nextDueDate)}</strong></div>
+          </div>
+          <div class="management-edit-grid">
+            <section class="management-field">
+              <div class="field-label">주기 <span>권장 ${item.recommendedIntervalValue}${UNIT_LABELS[item.recommendedIntervalUnit]}</span></div>
+              <div class="interval-row compact-interval-row">
+                <input type="number" min="1" inputmode="numeric" value="${item.intervalValue}" data-field="intervalValue" aria-label="${item.name} 주기 숫자" />
+                <select data-field="intervalUnit" aria-label="${item.name} 주기 단위">
+                  ${Object.entries(UNIT_LABELS).map(([value, label]) => `<option value="${value}"${item.intervalUnit === value ? " selected" : ""}>${label}</option>`).join("")}
+                </select>
+              </div>
+              <div class="quick-intervals compact-quick-intervals">
+                ${[1, 2, 3, 6].map((value) => `<button type="button" data-action="quick-interval" data-value="${value}" class="${item.intervalValue === value ? "is-active" : ""}">${value}${UNIT_LABELS[item.intervalUnit]}</button>`).join("")}
+              </div>
+            </section>
+            <section class="management-field">
+              <div class="field-label">최근 완료일</div>
+              <div class="date-mode-row compact-date-mode">
+                <button type="button" data-action="known-date" class="${!item.unknownLastCompletedDate ? "is-active" : ""}">날짜</button>
+                <button type="button" data-action="unknown-date" class="${item.unknownLastCompletedDate ? "is-active" : ""}">기억 안 남</button>
+              </div>
+              ${item.unknownLastCompletedDate ? `
+                <label class="date-input-label compact-date-input">첫 예정일
+                  <input type="date" value="${item.firstDueDate}" data-field="firstDueDate" />
+                </label>
+              ` : `
+                <label class="date-input-label compact-date-input">완료한 날
+                  <input type="date" max="${toDateOnly(new Date())}" value="${item.lastCompletedDate}" data-field="lastCompletedDate" />
+                </label>
+              `}
+            </section>
+          </div>
+          ${item.unknownLastCompletedDate ? `
+            <div class="first-date-options management-date-options">
+              <button type="button" data-action="first-date" data-value="today">오늘</button>
+              <button type="button" data-action="first-date" data-value="weekend">이번 주말</button>
+              <button type="button" data-action="first-date" data-value="next-week">다음 주</button>
+            </div>
+          ` : ""}
+          <div class="next-due-preview">
+            <span>다음 예정일</span>
+            <strong>${nextDueDate ? formatKoreanDate(nextDueDate) : "날짜를 입력하면 자동으로 계산돼요."}</strong>
+          </div>
+          ${item.registered ? `<button class="delete-chore-button" type="button" data-action="delete-chore">이 목록에서 삭제</button>` : ""}
+        </div>
+      ` : ""}
+    </article>`;
+}
+
+function renderManage() {
+  const state = createManagementState();
+
+  function paint() {
+    app.innerHTML = `
+      <main class="app-shell register-page">
+        <header class="register-header">
+          <button class="back-button" type="button" data-route="/" aria-label="메인 화면으로 돌아가기">‹</button>
+          <h1>집안일 관리 목록</h1>
+        </header>
+        <p class="management-intro">관리할 항목을 누르면 일정 정보를 확인하고 수정할 수 있어요.</p>
+        <form id="chore-form" novalidate>
+          ${state.length > 0
+            ? `<div class="chore-list">${state.map(renderManagementCard).join("")}</div>`
+            : `<div class="empty-management"><span aria-hidden="true">📝</span><p>아직 관리 중인 집안일이 없어요.</p></div>`}
+          <div class="register-footer-copy">
+            <img src="${butlerImage}" alt="우리집 집사 캐릭터" />
+            <p>현재 등록한 내용은 이 기기에 저장돼요.</p>
+          </div>
+          <p id="form-error" class="form-error" role="alert"></p>
+          <div class="register-actions management-actions">
+            <button class="primary-button submit-button" type="submit" ${state.length > 0 ? "" : "disabled"}>변경 내용 저장</button>
+            <button class="manage-register-button" type="button" data-route="/register">+ 새 집안일 등록</button>
+          </div>
+        </form>
+      </main>`;
+
+    app.querySelectorAll("[data-route]").forEach((button) => {
+      button.addEventListener("click", () => navigate(button.dataset.route));
+    });
+    app.querySelectorAll("[data-chore-id]").forEach((card) => {
+      const item = state.find((candidate) => candidate.id === card.dataset.choreId);
+      card.querySelector("[data-action='toggle-chore']").addEventListener("click", () => {
+        if (item.registered) item.expanded = !item.expanded;
+        else {
+          item.selected = !item.selected;
+          item.expanded = item.selected;
+        }
+        paint();
+      });
+      if (!item.selected || !item.expanded) return;
+
+      card.querySelectorAll("[data-field]").forEach((field) => {
+        field.addEventListener("change", () => {
+          item[field.dataset.field] = field.dataset.field === "intervalValue" ? Number(field.value) : field.value;
+          paint();
+        });
+      });
+      card.querySelectorAll("[data-action='quick-interval']").forEach((button) => {
+        button.addEventListener("click", () => {
+          item.intervalValue = Number(button.dataset.value);
+          paint();
+        });
+      });
+      card.querySelector("[data-action='known-date']").addEventListener("click", () => {
+        item.unknownLastCompletedDate = false;
+        item.firstDueDate = "";
+        paint();
+      });
+      card.querySelector("[data-action='unknown-date']").addEventListener("click", () => {
+        item.unknownLastCompletedDate = true;
+        item.lastCompletedDate = "";
+        paint();
+      });
+      card.querySelectorAll("[data-action='first-date']").forEach((button) => {
+        button.addEventListener("click", () => {
+          item.firstDueDate = firstScheduleDate(button.dataset.value);
+          paint();
+        });
+      });
+      card.querySelector("[data-action='delete-chore']")?.addEventListener("click", () => {
+        if (!window.confirm(`${item.name}을(를) 관리 목록에서 삭제할까요?`)) return;
+        persistChores(loadChores().filter((chore) => chore.id !== item.id));
+        state.splice(state.indexOf(item), 1);
+        paint();
+      });
+    });
+
+    app.querySelector("#chore-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const selected = state.filter((item) => item.selected);
+      const incomplete = selected.find((item) => (
+        !Number.isInteger(item.intervalValue)
+        || item.intervalValue < 1
+        || (item.unknownLastCompletedDate ? !item.firstDueDate : !item.lastCompletedDate)
+      ));
+      if (incomplete) {
+        app.querySelector("#form-error").textContent = `${incomplete.name}의 ${incomplete.unknownLastCompletedDate ? "첫 예정일" : "최근 완료일"}을 입력해 주세요.`;
+        return;
+      }
+
+      const existing = loadChores();
+      const existingById = new Map(existing.map((chore) => [chore.id, chore]));
+      const created = selected.map((item) => {
+        const lastCompletedDate = item.unknownLastCompletedDate ? null : item.lastCompletedDate;
+        const nextDueDate = item.unknownLastCompletedDate ? item.firstDueDate : calculateNextDueDate(lastCompletedDate, item.intervalValue, item.intervalUnit);
+        const existingChore = existingById.get(item.id);
+        const scheduleUnchanged = existingChore
+          && existingChore.intervalValue === item.intervalValue
+          && existingChore.intervalUnit === item.intervalUnit
+          && existingChore.lastCompletedDate === lastCompletedDate
+          && existingChore.nextDueDate === nextDueDate;
+        return createChore({
+          id: item.id,
+          name: item.name,
+          intervalValue: item.intervalValue,
+          intervalUnit: item.intervalUnit,
+          lastCompletedDate,
+          nextDueDate,
+          reminderSnoozedUntil: scheduleUnchanged ? existingChore.reminderSnoozedUntil : null,
+          isActive: true,
+          isExample: item.isExample,
+          createdAt: item.createdAt,
+        });
+      });
+      const selectedIds = new Set(created.map((chore) => chore.id));
+      persistChores([...existing.filter((chore) => !selectedIds.has(chore.id)), ...created]);
+      const earliestDueDate = created.map((chore) => chore.nextDueDate).sort()[0];
+      if (earliestDueDate) {
+        const [year, month] = earliestDueDate.split("-").map(Number);
+        calendarMonth = new Date(year, month - 1, 1);
+      }
+      navigate("/");
+    });
+  }
+
+  paint();
+}
+
+function createRegistrationState() {
+  return CHORE_CATALOG.map((item) => ({
+    ...item,
+    selected: false,
+    intervalValue: item.recommendedIntervalValue,
+    intervalUnit: item.recommendedIntervalUnit,
+    lastCompletedDate: "",
+    unknownLastCompletedDate: false,
+    firstDueDate: "",
+  }));
 }
 
 function renderChoreCard(item) {
@@ -349,7 +580,7 @@ function renderChoreCard(item) {
             </div>
           ` : `
             <label class="date-input-label">최근 완료일
-              <input type="date" value="${item.lastCompletedDate}" data-field="lastCompletedDate" />
+              <input type="date" max="${toDateOnly(new Date())}" value="${item.lastCompletedDate}" data-field="lastCompletedDate" />
             </label>
           `}
         </div>
@@ -368,7 +599,7 @@ function renderRegister() {
           <h1>집사가 기억해둘 일을 골라주세요.</h1>
         </header>
         <form id="chore-form" novalidate>
-          <div class="chore-list">${state.map(renderChoreCard).join("")}</div>
+          <div class="chore-list registration-chore-list">${state.map(renderChoreCard).join("")}</div>
           <div class="register-footer-copy">
             <img src="${butlerImage}" alt="우리집 집사 캐릭터" />
             <p>현재 등록한 내용은 이 기기에 저장돼요.</p>
@@ -466,12 +697,32 @@ function renderRegister() {
 function renderRoute() {
   const detailMatch = window.location.pathname.match(/^\/chores\/([^/]+)$/);
   if (window.location.pathname === "/register") renderRegister();
+  else if (window.location.pathname === "/manage") renderManage();
   else if (detailMatch) renderChoreDetail(decodeURIComponent(detailMatch[1]));
   else renderHome();
 }
 
+function showDailySplash() {
+  if (!shouldShowDailySplash(toDateOnly(new Date()))) return;
+  const splash = document.createElement("div");
+  splash.className = "daily-splash";
+  splash.setAttribute("role", "status");
+  splash.setAttribute("aria-label", "우리집 집사 시작 화면");
+  splash.innerHTML = `
+    <div class="daily-splash-content">
+      <img src="${butlerImage}" alt="" />
+      <h1>우리집 집사</h1>
+      <p>오늘도 제가 잘 챙겨드릴게요.</p>
+    </div>`;
+  document.body.append(splash);
+  requestAnimationFrame(() => splash.classList.add("is-visible"));
+  window.setTimeout(() => splash.classList.add("is-leaving"), 900);
+  window.setTimeout(() => splash.remove(), 1_200);
+}
+
 window.addEventListener("popstate", renderRoute);
 renderRoute();
+showDailySplash();
 
 async function refreshChoresFromPushServer() {
   try {

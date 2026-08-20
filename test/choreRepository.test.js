@@ -123,3 +123,16 @@ test("다른 날로 미룬 상태는 완료일을 유지하고 예정일만 바�
   assert.equal(reloaded.nextDueDate, "2026-08-25");
   assert.equal(reloaded.reminderSnoozedUntil, null);
 });
+
+test("관리 목록에서 삭제한 집안일은 재로딩 후에도 제거되어 있다", () => {
+  const storage = memoryStorage();
+  saveChores([
+    { id: "washer-clean", name: "세탁조 청소" },
+    { id: "aircon-filter", name: "에어컨 필터 청소" },
+  ], storage);
+
+  const remaining = loadChores(storage).filter((chore) => chore.id !== "washer-clean");
+  saveChores(remaining, storage);
+
+  assert.deepEqual(loadChores(storage), [{ id: "aircon-filter", name: "에어컨 필터 청소" }]);
+});
