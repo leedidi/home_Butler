@@ -3,7 +3,7 @@ self.addEventListener("push", (event) => {
   const options = {
     body: data.body ?? "테스트 알림입니다.",
     tag: "home-butler-push-poc",
-    data: { url: data.url ?? "/" },
+    data: { url: data.url ?? "/push-poc.html" },
     actions: [
       { action: "complete", title: "완료했어" },
       { action: "snooze", title: "내일 알려줘" },

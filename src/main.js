@@ -1,146 +1,313 @@
 import "./style.css";
+import { calculateNextDueDate, createChore } from "./domain/chore.js";
+import { CHORE_CATALOG } from "./domain/choreCatalog.js";
+import { loadChores, saveChores } from "./data/choreRepository.js";
 
-const status = {
-  permission: document.querySelector("#permission-status"),
-  worker: document.querySelector("#worker-status"),
-  subscription: document.querySelector("#subscription-status"),
-  result: document.querySelector("#result-message"),
-};
+const butlerImage = new URL("../assets/butler-variants/main_default_pose.png", import.meta.url).href;
+const app = document.querySelector("#app");
+const UNIT_LABELS = { day: "일", week: "주", month: "개월" };
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+let calendarMonth = startOfMonth(new Date());
 
-const subscribeButton = document.querySelector("#subscribe-button");
-const sendButton = document.querySelector("#send-button");
-const delayedSendButton = document.querySelector("#delayed-send-button");
-let registration;
-
-function showResult(message, isError = false) {
-  status.result.textContent = message;
-  status.result.classList.toggle("error", isError);
+function toDateOnly(date) {
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
 }
 
-function updatePermissionStatus() {
-  if (!("Notification" in window)) {
-    status.permission.textContent = "이 브라우저는 알림을 지원하지 않음";
-    return false;
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addLocalDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function navigate(path) {
+  window.history.pushState({}, "", path);
+  renderRoute();
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function renderCalendar(chores) {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const gridStart = addLocalDays(calendarMonth, -calendarMonth.getDay());
+  const today = toDateOnly(new Date());
+  const choresByDate = chores.reduce((grouped, chore) => {
+    if (!chore.isActive) return grouped;
+    grouped[chore.nextDueDate] ??= [];
+    grouped[chore.nextDueDate].push(chore);
+    return grouped;
+  }, {});
+
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const cellDate = addLocalDays(gridStart, index);
+    const dateOnly = toDateOnly(cellDate);
+    const events = choresByDate[dateOnly] ?? [];
+    const outsideMonth = cellDate.getMonth() !== month;
+    return `
+      <div class="calendar-cell${outsideMonth ? " is-outside" : ""}" data-date="${dateOnly}">
+        <span class="calendar-day${dateOnly === today ? " is-today" : ""}">${cellDate.getDate()}</span>
+        <div class="calendar-events">
+          ${events.slice(0, 2).map((chore) => `<span class="calendar-event" title="${escapeHtml(chore.name)}">${escapeHtml(chore.name)}</span>`).join("")}
+          ${events.length > 2 ? `<span class="calendar-more">+${events.length - 2}</span>` : ""}
+        </div>
+      </div>`;
+  }).join("");
+
+  return `
+    <section class="calendar-card" aria-labelledby="calendar-title">
+      <div class="calendar-header">
+        <button class="icon-button" type="button" data-action="previous-month" aria-label="이전 달">‹</button>
+        <div class="calendar-heading">
+          <h2 id="calendar-title">${year}년 ${month + 1}월</h2>
+          <button class="today-button" type="button" data-action="today">오늘</button>
+        </div>
+        <button class="icon-button" type="button" data-action="next-month" aria-label="다음 달">›</button>
+      </div>
+      <div class="weekday-row">${WEEKDAYS.map((day) => `<span>${day}</span>`).join("")}</div>
+      <div class="calendar-grid">${cells}</div>
+    </section>`;
+}
+
+function renderHome() {
+  const chores = loadChores();
+  const upcoming = [...chores]
+    .filter((chore) => chore.isActive)
+    .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate))
+    .slice(0, 3);
+
+  app.innerHTML = `
+    <main class="app-shell home-page">
+      <header class="home-header">
+        <div>
+          <h1>우리집 집사</h1>
+          <p>한 번 맡겨두면, 제가 기억하고 챙겨드릴게요.</p>
+        </div>
+        <button class="guide-button" type="button" aria-label="사용 방법"><span aria-hidden="true">ⓘ</span> 사용 방법</button>
+      </header>
+      <section class="butler-card">
+        <img src="${butlerImage}" alt="우리집 집사 캐릭터" />
+        ${chores.length === 0 ? `
+          <p class="butler-message">현재 관리 중인 집안일이 없어요.</p>
+        ` : `
+          <p class="butler-message"><strong>${chores.length}개</strong>의 집안일을 제가 챙기고 있어요.</p>
+          <ul class="upcoming-list">
+            ${upcoming.map((chore) => `<li><span>${escapeHtml(chore.name)}</span><time datetime="${chore.nextDueDate}">${chore.nextDueDate.slice(5).replace("-", ".")}</time></li>`).join("")}
+          </ul>
+        `}
+        <button class="primary-button compact" type="button" data-route="/register">+ 관리할 집안일 등록</button>
+      </section>
+      ${renderCalendar(chores)}
+      <button class="bottom-cta" type="button" data-route="/register">+ 우리 집 집사에게 맡길 일을 등록해볼까요?</button>
+    </main>`;
+
+  app.querySelector("[data-action='previous-month']").addEventListener("click", () => {
+    calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
+    renderHome();
+  });
+  app.querySelector("[data-action='next-month']").addEventListener("click", () => {
+    calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
+    renderHome();
+  });
+  app.querySelector("[data-action='today']").addEventListener("click", () => {
+    calendarMonth = startOfMonth(new Date());
+    renderHome();
+  });
+  app.querySelectorAll("[data-route]").forEach((element) => {
+    element.addEventListener("click", () => navigate(element.dataset.route));
+  });
+}
+
+function createRegistrationState() {
+  return CHORE_CATALOG.map((item) => ({
+    ...item,
+    selected: false,
+    intervalValue: item.recommendedIntervalValue,
+    intervalUnit: item.recommendedIntervalUnit,
+    lastCompletedDate: "",
+    unknownLastCompletedDate: false,
+    firstDueDate: "",
+  }));
+}
+
+function firstScheduleDate(action) {
+  const today = new Date();
+  if (action === "today") return toDateOnly(today);
+  if (action === "weekend") {
+    const daysUntilSaturday = (6 - today.getDay() + 7) % 7;
+    return toDateOnly(addLocalDays(today, daysUntilSaturday));
   }
-
-  const labels = {
-    default: "아직 선택하지 않음",
-    granted: "허용됨",
-    denied: "차단됨",
-  };
-  status.permission.textContent = labels[Notification.permission];
-  return Notification.permission === "granted";
+  return toDateOnly(addLocalDays(today, 7));
 }
 
-function urlBase64ToUint8Array(base64String) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map((character) => character.charCodeAt(0)));
+function renderChoreCard(item) {
+  return `
+    <article class="chore-card${item.selected ? " is-selected" : ""}" data-chore-id="${item.id}">
+      <button class="chore-selector" type="button" data-action="toggle-chore" aria-pressed="${item.selected}">
+        <span class="selection-circle" aria-hidden="true">${item.selected ? "✓" : ""}</span>
+        <span class="chore-icon" aria-hidden="true">${item.icon}</span>
+        <span>${item.name}</span>
+      </button>
+      ${item.selected ? `
+        <div class="chore-settings">
+          <div class="field-label">주기 <span>권장 ${item.recommendedIntervalValue}${UNIT_LABELS[item.recommendedIntervalUnit]}</span></div>
+          <div class="interval-row">
+            <input type="number" min="1" inputmode="numeric" value="${item.intervalValue}" data-field="intervalValue" aria-label="${item.name} 주기 숫자" />
+            <select data-field="intervalUnit" aria-label="${item.name} 주기 단위">
+              ${Object.entries(UNIT_LABELS).map(([value, label]) => `<option value="${value}"${item.intervalUnit === value ? " selected" : ""}>${label}</option>`).join("")}
+            </select>
+          </div>
+          <div class="quick-intervals">
+            ${[1, 2, 3, 6].map((value) => `<button type="button" data-action="quick-interval" data-value="${value}" class="${item.intervalValue === value ? "is-active" : ""}">${value}${UNIT_LABELS[item.intervalUnit]}</button>`).join("")}
+          </div>
+          <div class="field-label completion-label">마지막으로 한 날</div>
+          <div class="date-mode-row">
+            <button type="button" data-action="known-date" class="${!item.unknownLastCompletedDate ? "is-active" : ""}">날짜 선택</button>
+            <button type="button" data-action="unknown-date" class="${item.unknownLastCompletedDate ? "is-active" : ""}">기억 안 남</button>
+          </div>
+          ${item.unknownLastCompletedDate ? `
+            <div class="first-date-panel">
+              <p>그럼 언제부터 챙겨드릴까요?</p>
+              <div class="first-date-options">
+                <button type="button" data-action="first-date" data-value="today">오늘</button>
+                <button type="button" data-action="first-date" data-value="weekend">이번 주말</button>
+                <button type="button" data-action="first-date" data-value="next-week">다음 주</button>
+              </div>
+              <label class="date-input-label">첫 예정일 직접 선택
+                <input type="date" value="${item.firstDueDate}" data-field="firstDueDate" />
+              </label>
+            </div>
+          ` : `
+            <label class="date-input-label">최근 완료일
+              <input type="date" value="${item.lastCompletedDate}" data-field="lastCompletedDate" />
+            </label>
+          `}
+        </div>
+      ` : ""}
+    </article>`;
 }
 
-async function updateSubscriptionStatus() {
-  if (!registration) return;
-  const subscription = await registration.pushManager.getSubscription();
-  const subscribed = Boolean(subscription);
-  status.subscription.textContent = subscribed ? "이 기기에 등록됨" : "등록되지 않음";
-  sendButton.disabled = !subscribed;
-  delayedSendButton.disabled = !subscribed;
-  return subscription;
-}
+function renderRegister() {
+  const state = createRegistrationState();
 
-async function registerServiceWorker() {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-    status.worker.textContent = "이 브라우저는 Web Push를 지원하지 않음";
-    showResult("이 브라우저에서는 Web Push 테스트를 할 수 없습니다.", true);
-    return;
-  }
+  function paint() {
+    app.innerHTML = `
+      <main class="app-shell register-page">
+        <header class="register-header">
+          <button class="back-button" type="button" data-route="/" aria-label="메인 화면으로 돌아가기">‹</button>
+          <h1>집사가 기억해둘 일을 골라주세요.</h1>
+        </header>
+        <form id="chore-form" novalidate>
+          <div class="chore-list">${state.map(renderChoreCard).join("")}</div>
+          <div class="register-footer-copy">
+            <img src="${butlerImage}" alt="우리집 집사 캐릭터" />
+            <p>현재 등록한 내용은 이 기기에 저장돼요.</p>
+          </div>
+          <p id="form-error" class="form-error" role="alert"></p>
+          <div class="register-actions">
+            <button class="primary-button submit-button" type="submit" ${state.some((item) => item.selected) ? "" : "disabled"}>집사에게 맡기기</button>
+          </div>
+        </form>
+      </main>`;
 
-  registration = await navigator.serviceWorker.register("/service-worker.js");
-  await navigator.serviceWorker.ready;
-  status.worker.textContent = "등록 완료";
-  await updateSubscriptionStatus();
-}
+    app.querySelector("[data-route]").addEventListener("click", () => navigate("/"));
+    app.querySelectorAll("[data-chore-id]").forEach((card) => {
+      const item = state.find((candidate) => candidate.id === card.dataset.choreId);
+      card.querySelector("[data-action='toggle-chore']").addEventListener("click", () => {
+        item.selected = !item.selected;
+        paint();
+      });
+      if (!item.selected) return;
 
-async function subscribeToPush() {
-  try {
-    if (!registration) throw new Error("Service Worker가 준비되지 않았습니다.");
-
-    const permission = await Notification.requestPermission();
-    updatePermissionStatus();
-    if (permission !== "granted") {
-      throw new Error("알림 권한이 허용되지 않았습니다. 브라우저 설정에서 알림을 허용한 뒤 다시 시도하세요.");
-    }
-
-    const response = await fetch("/api/push/public-key");
-    if (!response.ok) throw new Error("푸시 공개 키를 가져오지 못했습니다.");
-    const { publicKey } = await response.json();
-
-    const existingSubscription = await registration.pushManager.getSubscription();
-    const subscription = existingSubscription ?? await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
+      card.querySelectorAll("[data-field]").forEach((field) => {
+        field.addEventListener("change", () => {
+          item[field.dataset.field] = field.dataset.field === "intervalValue" ? Number(field.value) : field.value;
+          if (field.dataset.field === "intervalUnit") paint();
+        });
+      });
+      card.querySelectorAll("[data-action='quick-interval']").forEach((button) => {
+        button.addEventListener("click", () => {
+          item.intervalValue = Number(button.dataset.value);
+          paint();
+        });
+      });
+      card.querySelector("[data-action='known-date']").addEventListener("click", () => {
+        item.unknownLastCompletedDate = false;
+        item.firstDueDate = "";
+        paint();
+      });
+      card.querySelector("[data-action='unknown-date']").addEventListener("click", () => {
+        item.unknownLastCompletedDate = true;
+        item.lastCompletedDate = "";
+        paint();
+      });
+      card.querySelectorAll("[data-action='first-date']").forEach((button) => {
+        button.addEventListener("click", () => {
+          item.firstDueDate = firstScheduleDate(button.dataset.value);
+          paint();
+        });
+      });
     });
 
-    const saveResponse = await fetch("/api/push/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscription }),
+    app.querySelector("#chore-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const selected = state.filter((item) => item.selected);
+      const incomplete = selected.find((item) => (
+        !Number.isInteger(item.intervalValue)
+        || item.intervalValue < 1
+        || (item.unknownLastCompletedDate ? !item.firstDueDate : !item.lastCompletedDate)
+      ));
+      if (incomplete) {
+        app.querySelector("#form-error").textContent = `${incomplete.name}의 ${incomplete.unknownLastCompletedDate ? "첫 예정일" : "최근 완료일"}을 입력해 주세요.`;
+        return;
+      }
+
+      const existing = loadChores();
+      const existingById = new Map(existing.map((chore) => [chore.id, chore]));
+      const created = selected.map((item) => {
+        const lastCompletedDate = item.unknownLastCompletedDate ? null : item.lastCompletedDate;
+        const nextDueDate = item.unknownLastCompletedDate ? item.firstDueDate : calculateNextDueDate(lastCompletedDate, item.intervalValue, item.intervalUnit);
+        return createChore({
+          id: item.id,
+          name: item.name,
+          intervalValue: item.intervalValue,
+          intervalUnit: item.intervalUnit,
+          lastCompletedDate,
+          nextDueDate,
+          reminderSnoozedUntil: null,
+          isActive: true,
+          createdAt: existingById.get(item.id)?.createdAt,
+        });
+      });
+      const selectedIds = new Set(created.map((chore) => chore.id));
+      saveChores([...existing.filter((chore) => !selectedIds.has(chore.id)), ...created]);
+      const earliestDueDate = created.map((chore) => chore.nextDueDate).sort()[0];
+      if (earliestDueDate) {
+        const [year, month] = earliestDueDate.split("-").map(Number);
+        calendarMonth = new Date(year, month - 1, 1);
+      }
+      navigate("/");
     });
-    if (!saveResponse.ok) throw new Error("기기 등록 정보를 저장하지 못했습니다.");
-
-    await updateSubscriptionStatus();
-    showResult("기기 등록이 완료되었습니다. 이제 테스트 Push를 보낼 수 있습니다.");
-  } catch (error) {
-    showResult(error.message, true);
   }
+
+  paint();
 }
 
-async function sendTestPush(delaySeconds = 0) {
-  try {
-    sendButton.disabled = true;
-    delayedSendButton.disabled = true;
-    const response = await fetch("/api/push/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ delaySeconds }),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message ?? "테스트 Push 발송에 실패했습니다.");
-    showResult(delaySeconds > 0
-      ? `${delaySeconds}초 뒤 테스트 Push를 보냅니다. 지금 이 탭을 닫아도 됩니다.`
-      : `테스트 Push 발송 요청을 완료했습니다. (${result.sent}개 기기)`);
-  } catch (error) {
-    showResult(error.message, true);
-  } finally {
-    await updateSubscriptionStatus();
-  }
+function renderRoute() {
+  if (window.location.pathname === "/register") renderRegister();
+  else renderHome();
 }
 
-navigator.serviceWorker?.addEventListener("message", (event) => {
-  if (event.data?.type !== "PUSH_ACTION") return;
-  const messages = {
-    complete: "‘완료했어’ 액션을 받았습니다. 실제 일정은 변경하지 않았습니다.",
-    snooze: "‘내일 알려줘’ 액션을 받았습니다. 실제 일정은 변경하지 않았습니다.",
-  };
-  showResult(messages[event.data.action] ?? "알림 클릭을 확인했습니다.");
-});
-
-const openedFromAction = new URLSearchParams(window.location.search).get("pushAction");
-if (openedFromAction) {
-  const messages = {
-    complete: "‘완료했어’ 액션으로 웹앱을 열었습니다. 실제 일정은 변경하지 않았습니다.",
-    snooze: "‘내일 알려줘’ 액션으로 웹앱을 열었습니다. 실제 일정은 변경하지 않았습니다.",
-  };
-  showResult(messages[openedFromAction] ?? "알림을 통해 웹앱을 열었습니다.");
-}
-
-subscribeButton.addEventListener("click", subscribeToPush);
-sendButton.addEventListener("click", () => sendTestPush());
-delayedSendButton.addEventListener("click", () => sendTestPush(10));
-
-updatePermissionStatus();
-registerServiceWorker().catch((error) => {
-  status.worker.textContent = "등록 실패";
-  showResult(`Service Worker 등록에 실패했습니다: ${error.message}`, true);
-});
+window.addEventListener("popstate", renderRoute);
+renderRoute();

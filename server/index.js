@@ -60,7 +60,7 @@ async function deliverTestPush() {
   const payload = JSON.stringify({
     title: "우리집 집사 테스트 알림",
     body: "알림 클릭과 액션 버튼을 확인해 보세요.",
-    url: "/",
+    url: "/push-poc.html",
     id: crypto.randomUUID(),
   });
   const results = await Promise.allSettled(subscriptions.map((subscription) => webpush.sendNotification(subscription, payload)));
