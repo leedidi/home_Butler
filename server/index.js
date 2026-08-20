@@ -51,10 +51,10 @@ app.post("/api/push/subscribe", (request, response) => {
   return response.status(201).json({ message: "기기가 등록되었습니다." });
 });
 
-app.post("/api/push/test", async (_request, response) => {
+async function deliverTestPush() {
   const subscriptions = readJson(subscriptionsPath, []);
   if (subscriptions.length === 0) {
-    return response.status(400).json({ message: "등록된 기기가 없습니다. 먼저 알림 권한을 허용하세요." });
+    return { sent: 0, message: "등록된 기기가 없습니다. 먼저 알림 권한을 허용하세요." };
   }
 
   const payload = JSON.stringify({
@@ -74,10 +74,27 @@ app.post("/api/push/test", async (_request, response) => {
   }
 
   const sent = results.filter((result) => result.status === "fulfilled").length;
-  return response.status(sent > 0 ? 200 : 502).json({
+  return {
     sent,
     message: sent > 0 ? "테스트 Push 발송 요청을 완료했습니다." : "Push 서비스가 알림을 수락하지 않았습니다.",
-  });
+  };
+}
+
+app.post("/api/push/test", async (request, response) => {
+  const requestedDelay = Number(request.body?.delaySeconds ?? 0);
+  const delaySeconds = Number.isFinite(requestedDelay) ? Math.min(Math.max(requestedDelay, 0), 30) : 0;
+  if (readJson(subscriptionsPath, []).length === 0) {
+    return response.status(400).json({ message: "등록된 기기가 없습니다. 먼저 알림 권한을 허용하세요." });
+  }
+  if (delaySeconds > 0) {
+    setTimeout(() => {
+      deliverTestPush().catch((error) => console.error("Delayed test Push failed:", error));
+    }, delaySeconds * 1000);
+    return response.status(202).json({ message: `${delaySeconds}초 뒤 테스트 Push를 보냅니다.` });
+  }
+
+  const result = await deliverTestPush();
+  return response.status(result.sent > 0 ? 200 : 400).json(result);
 });
 
 app.listen(3001, () => {

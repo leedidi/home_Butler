@@ -9,6 +9,7 @@ const status = {
 
 const subscribeButton = document.querySelector("#subscribe-button");
 const sendButton = document.querySelector("#send-button");
+const delayedSendButton = document.querySelector("#delayed-send-button");
 let registration;
 
 function showResult(message, isError = false) {
@@ -44,6 +45,7 @@ async function updateSubscriptionStatus() {
   const subscribed = Boolean(subscription);
   status.subscription.textContent = subscribed ? "이 기기에 등록됨" : "등록되지 않음";
   sendButton.disabled = !subscribed;
+  delayedSendButton.disabled = !subscribed;
   return subscription;
 }
 
@@ -94,13 +96,20 @@ async function subscribeToPush() {
   }
 }
 
-async function sendTestPush() {
+async function sendTestPush(delaySeconds = 0) {
   try {
     sendButton.disabled = true;
-    const response = await fetch("/api/push/test", { method: "POST" });
+    delayedSendButton.disabled = true;
+    const response = await fetch("/api/push/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ delaySeconds }),
+    });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message ?? "테스트 Push 발송에 실패했습니다.");
-    showResult(`테스트 Push 발송 요청을 완료했습니다. (${result.sent}개 기기)`);
+    showResult(delaySeconds > 0
+      ? `${delaySeconds}초 뒤 테스트 Push를 보냅니다. 지금 이 탭을 닫아도 됩니다.`
+      : `테스트 Push 발송 요청을 완료했습니다. (${result.sent}개 기기)`);
   } catch (error) {
     showResult(error.message, true);
   } finally {
@@ -127,7 +136,8 @@ if (openedFromAction) {
 }
 
 subscribeButton.addEventListener("click", subscribeToPush);
-sendButton.addEventListener("click", sendTestPush);
+sendButton.addEventListener("click", () => sendTestPush());
+delayedSendButton.addEventListener("click", () => sendTestPush(10));
 
 updatePermissionStatus();
 registerServiceWorker().catch((error) => {
