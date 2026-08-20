@@ -542,6 +542,7 @@ function createRegistrationState() {
 }
 
 function renderChoreCard(item) {
+  const nextDueDate = draftNextDueDate(item);
   return `
     <article class="chore-card${item.selected ? " is-selected" : ""}" data-chore-id="${item.id}">
       <button class="chore-selector" type="button" data-action="toggle-chore" aria-pressed="${item.selected}">
@@ -551,6 +552,11 @@ function renderChoreCard(item) {
       </button>
       ${item.selected ? `
         <div class="chore-settings">
+          <div class="schedule-summary registration-summary" aria-label="${item.name} 일정 요약">
+            <div><span>주기</span><strong>${item.intervalValue}${UNIT_LABELS[item.intervalUnit]}</strong></div>
+            <div><span>최근 완료일</span><strong>${item.unknownLastCompletedDate ? "기억 안 남" : shortDate(item.lastCompletedDate)}</strong></div>
+            <div><span>다음 예정일</span><strong>${shortDate(nextDueDate)}</strong></div>
+          </div>
           <div class="field-label">주기 <span>권장 ${item.recommendedIntervalValue}${UNIT_LABELS[item.recommendedIntervalUnit]}</span></div>
           <div class="interval-row">
             <input type="number" min="1" inputmode="numeric" value="${item.intervalValue}" data-field="intervalValue" aria-label="${item.name} 주기 숫자" />
@@ -623,7 +629,7 @@ function renderRegister() {
       card.querySelectorAll("[data-field]").forEach((field) => {
         field.addEventListener("change", () => {
           item[field.dataset.field] = field.dataset.field === "intervalValue" ? Number(field.value) : field.value;
-          if (field.dataset.field === "intervalUnit") paint();
+          paint();
         });
       });
       card.querySelectorAll("[data-action='quick-interval']").forEach((button) => {
