@@ -69,6 +69,15 @@ h1, h2 { font-weight: 700; }
 .detail-list dd { margin: 0; color: #30313d; font-size: 14px; text-align: right; }
 .detail-help { margin: 16px 0; color: #7b7d8c; font-size: 12px; text-align: center; }
 .complete-button { width: 100%; padding: 15px 18px; }
+.detail-actions { display: grid; gap: 9px; }
+.secondary-button { width: 100%; border: 1px solid #bfc4df; border-radius: 999px; padding: 14px 18px; background: #f5f6fb; color: #515d9b; }
+.text-button { width: 100%; border: 0; padding: 8px 12px; background: transparent; color: #727586; }
+.reschedule-panel { display: grid; gap: 8px; margin-top: 10px; padding: 14px; border-radius: 18px; background: #f4f4f8; }
+.reschedule-panel[hidden] { display: none; }
+.reschedule-panel label { color: #666979; font-size: 12px; }
+.reschedule-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.reschedule-row input { min-width: 0; height: 42px; border: 1px solid #dddfe8; border-radius: 13px; padding: 0 10px; background: #fff; color: #30313d; }
+.reschedule-submit { border-radius: 13px; padding: 0 15px; }
 
 .register-page { padding-bottom: 16px; }
 .register-header { display: flex; align-items: center; gap: 9px; margin-bottom: 17px; }

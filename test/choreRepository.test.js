@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { completeChore, createChore } from "../src/domain/chore.js";
+import {
+  completeChore,
+  createChore,
+  rescheduleChore,
+  snoozeReminder,
+} from "../src/domain/chore.js";
 import {
   CHORE_STORAGE_KEY,
   loadChores,
@@ -74,4 +79,47 @@ test("등록한 일정을 오늘 완료하면 완료일과 다음 예정일이 �
   assert.equal(saved.reminderSnoozedUntil, null);
   assert.equal(saved.intervalValue, 2);
   assert.equal(saved.intervalUnit, "month");
+});
+
+test("내일 알림으로 미룬 상태는 완료일과 예정일을 유지한 채 저장된다", () => {
+  const storage = memoryStorage();
+  const registered = createChore({
+    id: "washer-clean",
+    name: "세탁조 청소",
+    intervalValue: 2,
+    intervalUnit: "month",
+    lastCompletedDate: "2026-06-20",
+    nextDueDate: "2026-08-20",
+    createdAt: "2026-06-20T09:00:00.000Z",
+  });
+  saveChores([registered], storage);
+
+  updateChore(snoozeReminder(loadChores(storage)[0], "2026-08-20"), storage);
+
+  const [reloaded] = loadChores(storage);
+  assert.equal(reloaded.lastCompletedDate, "2026-06-20");
+  assert.equal(reloaded.nextDueDate, "2026-08-20");
+  assert.equal(reloaded.reminderSnoozedUntil, "2026-08-21");
+});
+
+test("다른 날로 미룬 상태는 완료일을 유지하고 예정일만 바꿔 저장된다", () => {
+  const storage = memoryStorage();
+  const registered = createChore({
+    id: "washer-clean",
+    name: "세탁조 청소",
+    intervalValue: 2,
+    intervalUnit: "month",
+    lastCompletedDate: "2026-06-20",
+    nextDueDate: "2026-08-20",
+    reminderSnoozedUntil: "2026-08-21",
+    createdAt: "2026-06-20T09:00:00.000Z",
+  });
+  saveChores([registered], storage);
+
+  updateChore(rescheduleChore(loadChores(storage)[0], "2026-08-25"), storage);
+
+  const [reloaded] = loadChores(storage);
+  assert.equal(reloaded.lastCompletedDate, "2026-06-20");
+  assert.equal(reloaded.nextDueDate, "2026-08-25");
+  assert.equal(reloaded.reminderSnoozedUntil, null);
 });

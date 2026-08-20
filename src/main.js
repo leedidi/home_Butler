@@ -1,5 +1,11 @@
 import "./style.css";
-import { calculateNextDueDate, completeChore, createChore } from "./domain/chore.js";
+import {
+  calculateNextDueDate,
+  completeChore,
+  createChore,
+  rescheduleChore,
+  snoozeReminder,
+} from "./domain/chore.js";
 import { CHORE_CATALOG } from "./domain/choreCatalog.js";
 import { loadChores, saveChores, updateChore } from "./data/choreRepository.js";
 
@@ -173,9 +179,26 @@ function renderChoreDetail(choreId) {
             <dt>현재 예정일</dt>
             <dd>${formatKoreanDate(chore.nextDueDate)}</dd>
           </div>
+          ${chore.reminderSnoozedUntil ? `
+            <div>
+              <dt>다시 알림 받을 날</dt>
+              <dd>${formatKoreanDate(chore.reminderSnoozedUntil)}</dd>
+            </div>
+          ` : ""}
         </dl>
         <p class="detail-help">완료한 날을 기준으로 다음 일정을 자동으로 계산해드려요.</p>
-        <button class="primary-button complete-button" type="button" data-action="complete-today">오늘 완료했어</button>
+        <div class="detail-actions">
+          <button class="primary-button complete-button" type="button" data-action="complete-today">오늘 완료했어</button>
+          <button class="secondary-button" type="button" data-action="snooze-tomorrow">내일 알려줘</button>
+          <button class="text-button" type="button" data-action="show-reschedule">다른 날로 미룰게</button>
+        </div>
+        <form class="reschedule-panel" data-reschedule-form hidden>
+          <label for="reschedule-date">새로운 예정일</label>
+          <div class="reschedule-row">
+            <input id="reschedule-date" name="rescheduleDate" type="date" min="${toDateOnly(new Date())}" required />
+            <button class="primary-button reschedule-submit" type="submit">변경하기</button>
+          </div>
+        </form>
       </section>
     </main>`;
 
@@ -184,6 +207,27 @@ function renderChoreDetail(choreId) {
     const completed = completeChore(chore, toDateOnly(new Date()));
     updateChore(completed);
     const [year, month] = completed.nextDueDate.split("-").map(Number);
+    calendarMonth = new Date(year, month - 1, 1);
+    navigate("/");
+  });
+  app.querySelector("[data-action='snooze-tomorrow']").addEventListener("click", () => {
+    updateChore(snoozeReminder(chore, toDateOnly(new Date())));
+    const [year, month] = chore.nextDueDate.split("-").map(Number);
+    calendarMonth = new Date(year, month - 1, 1);
+    navigate("/");
+  });
+
+  const reschedulePanel = app.querySelector("[data-reschedule-form]");
+  app.querySelector("[data-action='show-reschedule']").addEventListener("click", () => {
+    reschedulePanel.hidden = !reschedulePanel.hidden;
+    if (!reschedulePanel.hidden) app.querySelector("#reschedule-date").focus();
+  });
+  reschedulePanel.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const selectedDate = new FormData(reschedulePanel).get("rescheduleDate");
+    const rescheduled = rescheduleChore(chore, selectedDate);
+    updateChore(rescheduled);
+    const [year, month] = rescheduled.nextDueDate.split("-").map(Number);
     calendarMonth = new Date(year, month - 1, 1);
     navigate("/");
   });
