@@ -8,7 +8,7 @@ import {
 } from "./domain/chore.js";
 import { CHORE_CATALOG } from "./domain/choreCatalog.js";
 import { loadChores, saveChores, updateChore } from "./data/choreRepository.js";
-import { shouldShowDailySplash } from "./ui/dailySplash.js";
+import { getStartupPath } from "./ui/startup.js";
 import {
   enablePushNotifications,
   getPushEnabled,
@@ -651,8 +651,7 @@ function renderRoute() {
   else renderHome();
 }
 
-function showDailySplash() {
-  if (!shouldShowDailySplash(toDateOnly(new Date()))) return;
+function showStartupSplash() {
   const splash = document.createElement("div");
   splash.className = "daily-splash";
   splash.setAttribute("role", "status");
@@ -670,8 +669,12 @@ function showDailySplash() {
 }
 
 window.addEventListener("popstate", renderRoute);
+const startupPath = getStartupPath(window.location.pathname);
+if (startupPath !== window.location.pathname) {
+  window.history.replaceState({}, "", startupPath);
+}
 renderRoute();
-showDailySplash();
+showStartupSplash();
 
 async function refreshChoresFromPushServer() {
   try {
