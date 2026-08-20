@@ -1,4 +1,6 @@
 import "./push-poc.css";
+import { loadChores, updateChore } from "./data/choreRepository.js";
+import { getPushClientId, syncChoresToPushServer } from "./pushClient.js";
 
 const status = {
   permission: document.querySelector("#permission-status"),
@@ -71,9 +73,10 @@ async function subscribeToPush() {
     const saveResponse = await fetch("/api/push/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscription }),
+      body: JSON.stringify({ clientId: getPushClientId(), subscription }),
     });
     if (!saveResponse.ok) throw new Error("기기 등록 정보를 저장하지 못했습니다.");
+    await syncChoresToPushServer(loadChores());
     await updateSubscriptionStatus();
     showResult("기기 등록이 완료되었습니다. 이제 테스트 Push를 보낼 수 있습니다.");
   } catch (error) {
@@ -85,10 +88,17 @@ async function sendTestPush(delaySeconds = 0) {
   try {
     sendButton.disabled = true;
     delayedSendButton.disabled = true;
+    const chores = loadChores();
+    if (chores.length === 0) throw new Error("먼저 메인 화면에서 실제 집안일을 등록해 주세요.");
+    await syncChoresToPushServer(chores);
     const response = await fetch("/api/push/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ delaySeconds }),
+      body: JSON.stringify({
+        clientId: getPushClientId(),
+        choreId: chores[0].id,
+        delaySeconds,
+      }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message ?? "테스트 Push 발송에 실패했습니다.");
@@ -101,16 +111,11 @@ async function sendTestPush(delaySeconds = 0) {
 }
 
 navigator.serviceWorker?.addEventListener("message", (event) => {
-  if (event.data?.type !== "PUSH_ACTION") return;
-  const messages = { complete: "‘완료했어’ 액션을 받았습니다.", snooze: "‘내일 알려줘’ 액션을 받았습니다." };
+  if (event.data?.type !== "PUSH_CHORE_UPDATED") return;
+  if (event.data.chore) updateChore(event.data.chore);
+  const messages = { complete: "실제 집안일을 완료 처리했습니다.", snooze: "실제 집안일 알림을 내일로 미뤘습니다." };
   showResult(messages[event.data.action] ?? "알림 클릭을 확인했습니다.");
 });
-
-const openedFromAction = new URLSearchParams(window.location.search).get("pushAction");
-if (openedFromAction) {
-  const messages = { complete: "‘완료했어’ 액션으로 테스트 화면을 열었습니다.", snooze: "‘내일 알려줘’ 액션으로 테스트 화면을 열었습니다." };
-  showResult(messages[openedFromAction] ?? "알림을 통해 테스트 화면을 열었습니다.");
-}
 
 subscribeButton.addEventListener("click", subscribeToPush);
 sendButton.addEventListener("click", () => sendTestPush());

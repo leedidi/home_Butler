@@ -38,6 +38,11 @@ h1, h2 { font-weight: 700; }
 .primary-button.compact { padding: 12px 22px; font-size: 15px; }
 .primary-button:disabled { background: #a9afd2; box-shadow: none; cursor: not-allowed; }
 .bottom-cta { width: 100%; margin-top: 14px; padding: 16px 18px; font-size: 15px; }
+.notification-control { display: grid; justify-items: center; gap: 4px; margin-top: 10px; }
+.notification-button { border: 0; padding: 5px 9px; background: transparent; color: #717486; font-size: 12px; }
+.notification-button.is-enabled { color: #53609e; }
+.notification-button:disabled { cursor: wait; opacity: 0.65; }
+.notification-status { min-height: 14px; margin: 0; color: #777a89; font-size: 11px; }
 
 .calendar-card { overflow: hidden; padding-top: 14px; border-radius: 22px; }
 .calendar-header { display: grid; grid-template-columns: 42px 1fr 42px; align-items: center; padding: 0 10px 12px; }

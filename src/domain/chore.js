@@ -26,6 +26,7 @@ const UNIT_ALIASES = Object.freeze({
  * @property {string} nextDueDate 날짜만 포함한 YYYY-MM-DD 형식
  * @property {string|null} reminderSnoozedUntil 날짜만 포함한 YYYY-MM-DD 형식
  * @property {boolean} isActive
+ * @property {boolean} isExample 실제 알림에서 제외되는 첫 방문용 예시 여부
  * @property {string} createdAt ISO 8601 날짜·시간 형식
  */
 
@@ -147,6 +148,7 @@ export function createChore(input) {
     nextDueDate: input.nextDueDate,
     reminderSnoozedUntil: input.reminderSnoozedUntil ?? null,
     isActive: input.isActive ?? true,
+    isExample: input.isExample ?? false,
     createdAt,
   };
 }

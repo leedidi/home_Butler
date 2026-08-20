@@ -8,12 +8,38 @@ import {
 } from "./domain/chore.js";
 import { CHORE_CATALOG } from "./domain/choreCatalog.js";
 import { loadChores, saveChores, updateChore } from "./data/choreRepository.js";
+import {
+  enablePushNotifications,
+  getPushEnabled,
+  loadChoresFromPushServer,
+  registerPushServiceWorker,
+  restorePushRegistration,
+  syncChoresToPushServer,
+} from "./pushClient.js";
 
 const butlerImage = new URL("../assets/butler-variants/main_default_pose.png", import.meta.url).href;
 const app = document.querySelector("#app");
 const UNIT_LABELS = { day: "일", week: "주", month: "개월" };
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 let calendarMonth = startOfMonth(new Date());
+
+function syncCurrentChores() {
+  syncChoresToPushServer(loadChores()).catch((error) => {
+    console.warn("Push 일정 동기화 실패:", error.message);
+  });
+}
+
+function persistChores(chores) {
+  saveChores(chores);
+  syncCurrentChores();
+  return chores;
+}
+
+function persistChore(chore) {
+  updateChore(chore);
+  syncCurrentChores();
+  return chore;
+}
 
 function toDateOnly(date) {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
@@ -119,6 +145,10 @@ function renderHome() {
           </ul>
         `}
         <button class="primary-button compact" type="button" data-route="/register">+ 관리할 집안일 등록</button>
+        <div class="notification-control">
+          <button class="notification-button" type="button" data-action="enable-notifications">🔔 알림 받기</button>
+          <p class="notification-status" role="status"></p>
+        </div>
       </section>
       ${renderCalendar(chores)}
       <button class="bottom-cta" type="button" data-route="/register">+ 우리 집 집사에게 맡길 일을 등록해볼까요?</button>
@@ -143,6 +173,27 @@ function renderHome() {
     eventButton.addEventListener("click", () => {
       navigate(`/chores/${encodeURIComponent(eventButton.dataset.choreId)}`);
     });
+  });
+  const notificationButton = app.querySelector("[data-action='enable-notifications']");
+  const notificationStatus = app.querySelector(".notification-status");
+  getPushEnabled().then((enabled) => {
+    if (!notificationButton.isConnected) return;
+    notificationButton.textContent = enabled ? "🔔 알림 켜짐" : "🔔 알림 받기";
+    notificationButton.classList.toggle("is-enabled", enabled);
+  });
+  notificationButton.addEventListener("click", async () => {
+    notificationButton.disabled = true;
+    notificationStatus.textContent = "기기 알림을 연결하고 있어요…";
+    try {
+      await enablePushNotifications(loadChores());
+      notificationButton.textContent = "🔔 알림 켜짐";
+      notificationButton.classList.add("is-enabled");
+      notificationStatus.textContent = "매일 오후 7시에 필요한 알림을 보내드릴게요.";
+    } catch (error) {
+      notificationStatus.textContent = error.message;
+    } finally {
+      notificationButton.disabled = false;
+    }
   });
 }
 
@@ -205,13 +256,13 @@ function renderChoreDetail(choreId) {
   app.querySelector("[data-route]").addEventListener("click", () => navigate("/"));
   app.querySelector("[data-action='complete-today']").addEventListener("click", () => {
     const completed = completeChore(chore, toDateOnly(new Date()));
-    updateChore(completed);
+    persistChore(completed);
     const [year, month] = completed.nextDueDate.split("-").map(Number);
     calendarMonth = new Date(year, month - 1, 1);
     navigate("/");
   });
   app.querySelector("[data-action='snooze-tomorrow']").addEventListener("click", () => {
-    updateChore(snoozeReminder(chore, toDateOnly(new Date())));
+    persistChore(snoozeReminder(chore, toDateOnly(new Date())));
     const [year, month] = chore.nextDueDate.split("-").map(Number);
     calendarMonth = new Date(year, month - 1, 1);
     navigate("/");
@@ -226,11 +277,15 @@ function renderChoreDetail(choreId) {
     event.preventDefault();
     const selectedDate = new FormData(reschedulePanel).get("rescheduleDate");
     const rescheduled = rescheduleChore(chore, selectedDate);
-    updateChore(rescheduled);
+    persistChore(rescheduled);
     const [year, month] = rescheduled.nextDueDate.split("-").map(Number);
     calendarMonth = new Date(year, month - 1, 1);
     navigate("/");
   });
+  if (new URLSearchParams(window.location.search).get("reschedule") === "1") {
+    reschedulePanel.hidden = false;
+    app.querySelector("#reschedule-date").focus();
+  }
 }
 
 function createRegistrationState() {
@@ -395,7 +450,7 @@ function renderRegister() {
         });
       });
       const selectedIds = new Set(created.map((chore) => chore.id));
-      saveChores([...existing.filter((chore) => !selectedIds.has(chore.id)), ...created]);
+      persistChores([...existing.filter((chore) => !selectedIds.has(chore.id)), ...created]);
       const earliestDueDate = created.map((chore) => chore.nextDueDate).sort()[0];
       if (earliestDueDate) {
         const [year, month] = earliestDueDate.split("-").map(Number);
@@ -417,3 +472,31 @@ function renderRoute() {
 
 window.addEventListener("popstate", renderRoute);
 renderRoute();
+
+async function refreshChoresFromPushServer() {
+  try {
+    const serverChores = await loadChoresFromPushServer();
+    if (!serverChores) {
+      if (loadChores().length > 0) syncCurrentChores();
+      return;
+    }
+    saveChores(serverChores);
+    renderRoute();
+  } catch (error) {
+    console.warn("Push 서버 데이터 확인 실패:", error.message);
+  }
+}
+
+async function initializePushIntegration() {
+  await registerPushServiceWorker().catch(() => null);
+  await refreshChoresFromPushServer();
+  await restorePushRegistration(loadChores());
+}
+
+initializePushIntegration();
+window.addEventListener("focus", refreshChoresFromPushServer);
+navigator.serviceWorker?.addEventListener("message", (event) => {
+  if (event.data?.type !== "PUSH_CHORE_UPDATED" || !event.data.chore) return;
+  updateChore(event.data.chore);
+  renderRoute();
+});
