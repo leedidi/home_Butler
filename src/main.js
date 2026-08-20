@@ -331,12 +331,37 @@ function draftNextDueDate(item) {
   }
 }
 
-function shortDate(dateOnly, emptyLabel = "미정") {
-  return dateOnly ? dateOnly.slice(5).replace("-", ".") : emptyLabel;
+function renderInlineScheduleFields(item) {
+  const nextDueDate = draftNextDueDate(item);
+  return `
+    <div class="registration-inline-fields" aria-label="${item.name} 일정 입력">
+      <section class="registration-inline-field">
+        <div class="registration-inline-label">주기 <span>권장 ${item.recommendedIntervalValue}${UNIT_LABELS[item.recommendedIntervalUnit]}</span></div>
+        <div class="registration-period-row">
+          <input type="number" min="1" inputmode="numeric" value="${item.intervalValue}" data-field="intervalValue" aria-label="${item.name} 주기 숫자" />
+          <select data-field="intervalUnit" aria-label="${item.name} 주기 단위">
+            ${Object.entries(UNIT_LABELS).map(([value, label]) => `<option value="${value}"${item.intervalUnit === value ? " selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </div>
+      </section>
+      <section class="registration-inline-field">
+        <div class="registration-inline-label">최근 완료일
+          <button class="registration-mode-toggle" type="button" data-action="${item.unknownLastCompletedDate ? "known-date" : "unknown-date"}">${item.unknownLastCompletedDate ? "날짜 입력" : "모름"}</button>
+        </div>
+        ${item.unknownLastCompletedDate
+          ? `<input class="registration-date-input is-readonly" type="text" value="기억 안 남" aria-label="최근 완료일 기억 안 남" readonly />`
+          : `<input class="registration-date-input" type="date" max="${toDateOnly(new Date())}" value="${item.lastCompletedDate}" data-field="lastCompletedDate" aria-label="${item.name} 최근 완료일" />`}
+      </section>
+      <section class="registration-inline-field">
+        <div class="registration-inline-label">다음 예정일</div>
+        ${item.unknownLastCompletedDate
+          ? `<input class="registration-date-input" type="date" value="${item.firstDueDate}" data-field="firstDueDate" aria-label="${item.name} 첫 예정일" />`
+          : `<input class="registration-date-input is-readonly" type="text" value="${nextDueDate}" placeholder="자동 계산" aria-label="${item.name} 자동 계산된 다음 예정일" readonly />`}
+      </section>
+    </div>`;
 }
 
 function renderManagementCard(item) {
-  const nextDueDate = draftNextDueDate(item);
   const marker = item.registered ? (item.expanded ? "⌃" : "⌄") : (item.selected ? "−" : "+");
   return `
     <article class="chore-card theme-${item.theme}${item.selected ? " is-selected" : ""}${item.registered ? " is-registered" : ""}" data-chore-id="${item.id}">
@@ -348,52 +373,7 @@ function renderManagementCard(item) {
       </button>
       ${item.selected && item.expanded ? `
         <div class="chore-settings">
-          <div class="schedule-summary" aria-label="${item.name} 일정 요약">
-            <div><span>주기</span><strong>${item.intervalValue}${UNIT_LABELS[item.intervalUnit]}</strong></div>
-            <div><span>최근 완료일</span><strong>${item.unknownLastCompletedDate ? "기억 안 남" : shortDate(item.lastCompletedDate)}</strong></div>
-            <div><span>다음 예정일</span><strong>${shortDate(nextDueDate)}</strong></div>
-          </div>
-          <div class="management-edit-grid">
-            <section class="management-field">
-              <div class="field-label">주기 <span>권장 ${item.recommendedIntervalValue}${UNIT_LABELS[item.recommendedIntervalUnit]}</span></div>
-              <div class="interval-row compact-interval-row">
-                <input type="number" min="1" inputmode="numeric" value="${item.intervalValue}" data-field="intervalValue" aria-label="${item.name} 주기 숫자" />
-                <select data-field="intervalUnit" aria-label="${item.name} 주기 단위">
-                  ${Object.entries(UNIT_LABELS).map(([value, label]) => `<option value="${value}"${item.intervalUnit === value ? " selected" : ""}>${label}</option>`).join("")}
-                </select>
-              </div>
-              <div class="quick-intervals compact-quick-intervals">
-                ${[1, 2, 3, 6].map((value) => `<button type="button" data-action="quick-interval" data-value="${value}" class="${item.intervalValue === value ? "is-active" : ""}">${value}${UNIT_LABELS[item.intervalUnit]}</button>`).join("")}
-              </div>
-            </section>
-            <section class="management-field">
-              <div class="field-label">최근 완료일</div>
-              <div class="date-mode-row compact-date-mode">
-                <button type="button" data-action="known-date" class="${!item.unknownLastCompletedDate ? "is-active" : ""}">날짜</button>
-                <button type="button" data-action="unknown-date" class="${item.unknownLastCompletedDate ? "is-active" : ""}">기억 안 남</button>
-              </div>
-              ${item.unknownLastCompletedDate ? `
-                <label class="date-input-label compact-date-input">첫 예정일
-                  <input type="date" value="${item.firstDueDate}" data-field="firstDueDate" />
-                </label>
-              ` : `
-                <label class="date-input-label compact-date-input">완료한 날
-                  <input type="date" max="${toDateOnly(new Date())}" value="${item.lastCompletedDate}" data-field="lastCompletedDate" />
-                </label>
-              `}
-            </section>
-          </div>
-          ${item.unknownLastCompletedDate ? `
-            <div class="first-date-options management-date-options">
-              <button type="button" data-action="first-date" data-value="today">오늘</button>
-              <button type="button" data-action="first-date" data-value="weekend">이번 주말</button>
-              <button type="button" data-action="first-date" data-value="next-week">다음 주</button>
-            </div>
-          ` : ""}
-          <div class="next-due-preview">
-            <span>다음 예정일</span>
-            <strong>${nextDueDate ? formatKoreanDate(nextDueDate) : "날짜를 입력하면 자동으로 계산돼요."}</strong>
-          </div>
+          ${renderInlineScheduleFields(item)}
           ${item.registered ? `<button class="delete-chore-button" type="button" data-action="delete-chore">이 목록에서 삭제</button>` : ""}
         </div>
       ` : ""}
@@ -454,12 +434,12 @@ function renderManage() {
           paint();
         });
       });
-      card.querySelector("[data-action='known-date']").addEventListener("click", () => {
+      card.querySelector("[data-action='known-date']")?.addEventListener("click", () => {
         item.unknownLastCompletedDate = false;
         item.firstDueDate = "";
         paint();
       });
-      card.querySelector("[data-action='unknown-date']").addEventListener("click", () => {
+      card.querySelector("[data-action='unknown-date']")?.addEventListener("click", () => {
         item.unknownLastCompletedDate = true;
         item.lastCompletedDate = "";
         paint();
@@ -542,7 +522,6 @@ function createRegistrationState() {
 }
 
 function renderChoreCard(item) {
-  const nextDueDate = draftNextDueDate(item);
   return `
     <article class="chore-card${item.selected ? " is-selected" : ""}" data-chore-id="${item.id}">
       <button class="chore-selector" type="button" data-action="toggle-chore" aria-pressed="${item.selected}">
@@ -552,31 +531,7 @@ function renderChoreCard(item) {
       </button>
       ${item.selected ? `
         <div class="chore-settings">
-          <div class="registration-inline-fields" aria-label="${item.name} 일정 입력">
-            <section class="registration-inline-field">
-              <div class="registration-inline-label">주기 <span>권장 ${item.recommendedIntervalValue}${UNIT_LABELS[item.recommendedIntervalUnit]}</span></div>
-              <div class="registration-period-row">
-                <input type="number" min="1" inputmode="numeric" value="${item.intervalValue}" data-field="intervalValue" aria-label="${item.name} 주기 숫자" />
-                <select data-field="intervalUnit" aria-label="${item.name} 주기 단위">
-                  ${Object.entries(UNIT_LABELS).map(([value, label]) => `<option value="${value}"${item.intervalUnit === value ? " selected" : ""}>${label}</option>`).join("")}
-                </select>
-              </div>
-            </section>
-            <section class="registration-inline-field">
-              <div class="registration-inline-label">최근 완료일
-                <button class="registration-mode-toggle" type="button" data-action="${item.unknownLastCompletedDate ? "known-date" : "unknown-date"}">${item.unknownLastCompletedDate ? "날짜 입력" : "모름"}</button>
-              </div>
-              ${item.unknownLastCompletedDate
-                ? `<input class="registration-date-input is-readonly" type="text" value="기억 안 남" aria-label="최근 완료일 기억 안 남" readonly />`
-                : `<input class="registration-date-input" type="date" max="${toDateOnly(new Date())}" value="${item.lastCompletedDate}" data-field="lastCompletedDate" aria-label="${item.name} 최근 완료일" />`}
-            </section>
-            <section class="registration-inline-field">
-              <div class="registration-inline-label">다음 예정일</div>
-              ${item.unknownLastCompletedDate
-                ? `<input class="registration-date-input" type="date" value="${item.firstDueDate}" data-field="firstDueDate" aria-label="${item.name} 첫 예정일" />`
-                : `<input class="registration-date-input is-readonly" type="text" value="${nextDueDate}" placeholder="자동 계산" aria-label="${item.name} 자동 계산된 다음 예정일" readonly />`}
-            </section>
-          </div>
+          ${renderInlineScheduleFields(item)}
         </div>
       ` : ""}
     </article>`;
