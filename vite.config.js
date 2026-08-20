@@ -11,6 +11,9 @@ export default defineConfig({
     },
   },
   server: {
+    watch: {
+      ignored: ["**/public/fonts/**", "**/*-Photoroom.png"],
+    },
     proxy: {
       "/api": "http://localhost:3001",
     },
