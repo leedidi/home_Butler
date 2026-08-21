@@ -18,8 +18,12 @@ import {
   syncChoresToPushServer,
 } from "./pushClient.js";
 
-const butlerImage = new URL("../assets/butler-variants/main_default_pose.png", import.meta.url).href;
+const splashButlerImage = new URL("../assets/butler-variants/main_default_pose.png", import.meta.url).href;
 const guideButlerImage = new URL("../assets/butler-variants/positive-01-thumbs-up.png", import.meta.url).href;
+const applauseButlerImage = new URL("../assets/butler-variants/positive-02-applause.png", import.meta.url).href;
+const workingButlerImage = new URL("../assets/butler-variants/butler-working-transparent.png", import.meta.url).href;
+const concernButlerImage = new URL("../assets/butler-variants/butler-concern-transparent.png", import.meta.url).href;
+const reminderButlerImage = new URL("../assets/butler-variants/butler-reminder-transparent.png", import.meta.url).href;
 const app = document.querySelector("#app");
 const UNIT_LABELS = { day: "일", week: "주", month: "개월" };
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -226,8 +230,31 @@ function openGuideModal() {
   modalPanel.focus();
 }
 
+function showButlerFeedback({ image, alt, title, message, onDone }) {
+  const feedback = document.createElement("div");
+  feedback.className = "butler-feedback";
+  feedback.setAttribute("role", "status");
+  feedback.setAttribute("aria-live", "polite");
+  feedback.innerHTML = `
+    <div class="butler-feedback-card">
+      <img src="${image}" alt="${alt}" />
+      <strong>${title}</strong>
+      <p>${message}</p>
+    </div>`;
+  document.body.append(feedback);
+  requestAnimationFrame(() => feedback.classList.add("is-visible"));
+  window.setTimeout(() => {
+    feedback.classList.remove("is-visible");
+    window.setTimeout(() => {
+      feedback.remove();
+      onDone();
+    }, 180);
+  }, 1_200);
+}
+
 function renderHome() {
   const chores = loadChores();
+  const homeButlerImage = chores.length === 0 ? concernButlerImage : guideButlerImage;
   const upcoming = [...chores]
     .filter((chore) => chore.isActive)
     .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate))
@@ -243,7 +270,7 @@ function renderHome() {
         <button class="guide-button" type="button" aria-label="사용 방법"><span aria-hidden="true">ⓘ</span> 사용 방법</button>
       </header>
       <section class="butler-card">
-        <img src="${butlerImage}" alt="우리집 집사 캐릭터" />
+        <img src="${homeButlerImage}" alt="${chores.length === 0 ? "등록할 집안일을 기다리는 우리집 집사" : "집안일을 잘 챙기겠다고 엄지를 든 우리집 집사"}" />
         ${chores.length === 0 ? `
           <p class="butler-message">현재 관리 중인 집안일이 없어요.</p>
         ` : `
@@ -368,13 +395,25 @@ function renderChoreDetail(choreId) {
     persistChore(completed);
     const [year, month] = completed.nextDueDate.split("-").map(Number);
     calendarMonth = new Date(year, month - 1, 1);
-    navigate("/");
+    showButlerFeedback({
+      image: applauseButlerImage,
+      alt: "완료를 축하하며 박수치는 우리집 집사",
+      title: "수고하셨어요!",
+      message: "완료한 오늘을 기준으로 다음 일정도 챙겨둘게요.",
+      onDone: () => navigate("/"),
+    });
   });
   app.querySelector("[data-action='snooze-tomorrow']").addEventListener("click", () => {
     persistChore(snoozeReminder(chore, toDateOnly(new Date())));
     const [year, month] = chore.nextDueDate.split("-").map(Number);
     calendarMonth = new Date(year, month - 1, 1);
-    navigate("/");
+    showButlerFeedback({
+      image: reminderButlerImage,
+      alt: "내일 다시 알려주겠다고 손가락을 든 우리집 집사",
+      title: "내일 다시 알려드릴게요.",
+      message: "예정일과 최근 완료일은 그대로 유지했어요.",
+      onDone: () => navigate("/"),
+    });
   });
 
   const reschedulePanel = app.querySelector("[data-reschedule-form]");
@@ -389,7 +428,13 @@ function renderChoreDetail(choreId) {
     persistChore(rescheduled);
     const [year, month] = rescheduled.nextDueDate.split("-").map(Number);
     calendarMonth = new Date(year, month - 1, 1);
-    navigate("/");
+    showButlerFeedback({
+      image: workingButlerImage,
+      alt: "새 일정을 기록하는 우리집 집사",
+      title: "새 날짜를 기록했어요.",
+      message: "선택한 날에 다시 챙겨드릴게요.",
+      onDone: () => navigate("/"),
+    });
   });
   if (new URLSearchParams(window.location.search).get("reschedule") === "1") {
     reschedulePanel.hidden = false;
@@ -504,7 +549,7 @@ function renderManage() {
             ? `<div class="chore-list">${state.map(renderManagementCard).join("")}</div>`
             : `<div class="empty-management"><span aria-hidden="true">📝</span><p>아직 관리 중인 집안일이 없어요.</p></div>`}
           <div class="register-footer-copy">
-            <img src="${butlerImage}" alt="우리집 집사 캐릭터" />
+            <img src="${workingButlerImage}" alt="관리 일정을 기록하는 우리집 집사" />
             <p>현재 등록한 내용은 이 기기에 저장돼요.</p>
           </div>
           <p id="form-error" class="form-error" role="alert"></p>
@@ -658,7 +703,7 @@ function renderRegister() {
         <form id="chore-form" novalidate>
           <div class="chore-list registration-chore-list">${state.map(renderChoreCard).join("")}</div>
           <div class="register-footer-copy">
-            <img src="${butlerImage}" alt="우리집 집사 캐릭터" />
+            <img src="${workingButlerImage}" alt="새 집안일을 기록할 준비를 하는 우리집 집사" />
             <p>현재 등록한 내용은 이 기기에 저장돼요.</p>
           </div>
           <p id="form-error" class="form-error" role="alert"></p>
@@ -766,7 +811,7 @@ function showStartupSplash() {
   splash.setAttribute("aria-label", "우리집 집사 시작 화면");
   splash.innerHTML = `
     <div class="daily-splash-content">
-      <img src="${butlerImage}" alt="" />
+      <img src="${splashButlerImage}" alt="" />
       <h1>우리집 집사</h1>
       <p>오늘도 제가 잘 챙겨드릴게요.</p>
     </div>`;
