@@ -78,6 +78,13 @@ function navigate(path) {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
+function getChorePresentation(chore) {
+  return CHORE_CATALOG.find((item) => item.id === chore.id) ?? {
+    icon: "✓",
+    theme: "blue",
+  };
+}
+
 function renderCalendar(chores) {
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
@@ -95,14 +102,19 @@ function renderCalendar(chores) {
     const dateOnly = toDateOnly(cellDate);
     const events = choresByDate[dateOnly] ?? [];
     const outsideMonth = cellDate.getMonth() !== month;
-    return `
-      <div class="calendar-cell${outsideMonth ? " is-outside" : ""}" data-date="${dateOnly}">
+    const cellContent = `
         <span class="calendar-day${dateOnly === today ? " is-today" : ""}">${cellDate.getDate()}</span>
         <div class="calendar-events">
-          ${events.slice(0, 2).map((chore) => `<button class="calendar-event" type="button" data-chore-id="${escapeHtml(chore.id)}" title="${escapeHtml(chore.name)}">${escapeHtml(chore.name)}</button>`).join("")}
+          ${events.slice(0, 2).map((chore) => {
+            const { theme } = getChorePresentation(chore);
+            return `<span class="calendar-event theme-${theme}" title="${escapeHtml(chore.name)}">${escapeHtml(chore.name)}</span>`;
+          }).join("")}
           ${events.length > 2 ? `<span class="calendar-more">+${events.length - 2}</span>` : ""}
-        </div>
-      </div>`;
+        </div>`;
+    if (events.length === 0) {
+      return `<div class="calendar-cell${outsideMonth ? " is-outside" : ""}" data-date="${dateOnly}">${cellContent}</div>`;
+    }
+    return `<button class="calendar-cell has-events${outsideMonth ? " is-outside" : ""}" type="button" data-action="open-day" data-date="${dateOnly}" aria-label="${month + 1}월 ${cellDate.getDate()}일 일정 ${events.length}개 보기">${cellContent}</button>`;
   }).join("");
 
   return `
@@ -118,6 +130,61 @@ function renderCalendar(chores) {
       <div class="weekday-row">${WEEKDAYS.map((day) => `<span>${day}</span>`).join("")}</div>
       <div class="calendar-grid">${cells}</div>
     </section>`;
+}
+
+function openDaySchedule(dateOnly, chores) {
+  const scheduledChores = chores.filter((chore) => chore.isActive && chore.nextDueDate === dateOnly);
+  if (scheduledChores.length === 0) return;
+  const [, month, day] = dateOnly.split("-").map(Number);
+  const modal = document.createElement("div");
+  modal.className = "day-sheet-backdrop";
+  modal.innerHTML = `
+    <section class="day-sheet" role="dialog" aria-modal="true" aria-labelledby="day-sheet-title" tabindex="-1">
+      <div class="day-sheet-handle" aria-hidden="true"></div>
+      <button class="day-sheet-close" type="button" data-action="close-day" aria-label="일정 목록 닫기">×</button>
+      <header class="day-sheet-header">
+        <h2 id="day-sheet-title">${month}월 ${day}일 일정</h2>
+        <span>${scheduledChores.length}개</span>
+      </header>
+      <div class="day-schedule-list">
+        ${scheduledChores.map((chore) => {
+          const { icon, theme } = getChorePresentation(chore);
+          return `
+            <button class="day-schedule-item theme-${theme}" type="button" data-chore-id="${escapeHtml(chore.id)}">
+              <span class="day-schedule-icon" aria-hidden="true">${icon}</span>
+              <span class="day-schedule-copy"><strong>${escapeHtml(chore.name)}</strong><small>주기 ${chore.intervalValue}${UNIT_LABELS[chore.intervalUnit]}</small></span>
+              <span class="day-schedule-arrow" aria-hidden="true">›</span>
+            </button>`;
+        }).join("")}
+      </div>
+    </section>`;
+
+  const modalPanel = modal.querySelector(".day-sheet");
+  const closeModal = (restoreFocus = true) => {
+    document.removeEventListener("keydown", handleKeydown);
+    document.body.classList.remove("is-day-sheet-open");
+    modal.remove();
+    if (restoreFocus) app.querySelector(`[data-action="open-day"][data-date="${dateOnly}"]`)?.focus();
+  };
+  const handleKeydown = (event) => {
+    if (event.key === "Escape") closeModal();
+  };
+
+  modal.querySelector("[data-action='close-day']").addEventListener("click", () => closeModal());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) closeModal();
+  });
+  modal.querySelectorAll("[data-chore-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const choreId = button.dataset.choreId;
+      closeModal(false);
+      navigate(`/chores/${encodeURIComponent(choreId)}`);
+    });
+  });
+  document.addEventListener("keydown", handleKeydown);
+  document.body.classList.add("is-day-sheet-open");
+  document.body.append(modal);
+  modalPanel.focus();
 }
 
 function openGuideModal() {
@@ -192,7 +259,7 @@ function renderHome() {
         </div>
       </section>
       ${renderCalendar(chores)}
-      <button class="bottom-cta" type="button" data-route="/register">+ 우리 집 집사에게 맡길 일을 등록해볼까요?</button>
+      <button class="bottom-cta" type="button" data-route="/register">+ 집안일 등록하기</button>
     </main>`;
 
   app.querySelector("[data-action='previous-month']").addEventListener("click", () => {
@@ -211,9 +278,9 @@ function renderHome() {
     element.addEventListener("click", () => navigate(element.dataset.route));
   });
   app.querySelector(".guide-button").addEventListener("click", openGuideModal);
-  app.querySelectorAll(".calendar-event[data-chore-id]").forEach((eventButton) => {
-    eventButton.addEventListener("click", () => {
-      navigate(`/chores/${encodeURIComponent(eventButton.dataset.choreId)}`);
+  app.querySelectorAll("[data-action='open-day']").forEach((dayButton) => {
+    dayButton.addEventListener("click", () => {
+      openDaySchedule(dayButton.dataset.date, chores);
     });
   });
   const notificationButton = app.querySelector("[data-action='enable-notifications']");
