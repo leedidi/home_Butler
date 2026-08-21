@@ -8,7 +8,7 @@ import {
 } from "./domain/chore.js";
 import { CHORE_CATALOG } from "./domain/choreCatalog.js";
 import { loadChores, saveChores, updateChore } from "./data/choreRepository.js";
-import { getStartupPath } from "./ui/startup.js";
+import { getStartupPath, shouldShowStartupSplash } from "./ui/startup.js";
 import {
   enablePushNotifications,
   getPushEnabled,
@@ -664,17 +664,20 @@ function showStartupSplash() {
     </div>`;
   document.body.append(splash);
   requestAnimationFrame(() => splash.classList.add("is-visible"));
-  window.setTimeout(() => splash.classList.add("is-leaving"), 900);
-  window.setTimeout(() => splash.remove(), 1_200);
+  window.setTimeout(() => splash.classList.add("is-leaving"), 1_800);
+  window.setTimeout(() => splash.remove(), 2_000);
 }
 
 window.addEventListener("popstate", renderRoute);
-const startupPath = getStartupPath(window.location.pathname);
-if (startupPath !== window.location.pathname) {
-  window.history.replaceState({}, "", startupPath);
+const isFirstLaunch = shouldShowStartupSplash();
+if (isFirstLaunch) {
+  const startupPath = getStartupPath(window.location.pathname);
+  if (startupPath !== window.location.pathname) {
+    window.history.replaceState({}, "", startupPath);
+  }
 }
 renderRoute();
-showStartupSplash();
+if (isFirstLaunch) showStartupSplash();
 
 async function refreshChoresFromPushServer() {
   try {
