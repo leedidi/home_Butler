@@ -179,16 +179,21 @@ app.post("/api/chores/sync", (request, response) => {
   }
 });
 
-app.get("/api/chores/:clientId", (request, response) => {
-  const record = findChoreRecord(request.params.clientId);
+function handleLoadChores(request, response) {
+  const clientId = request.params.clientId ?? request.query.clientId;
+  const record = findChoreRecord(clientId);
   if (!record) return response.status(404).json({ message: "동기화된 집안일이 없습니다." });
   return response.json({ chores: record.chores, updatedAt: record.updatedAt });
-});
+}
 
-app.post("/api/chores/:choreId/actions", (request, response) => {
-  const { clientId, action } = request.body ?? {};
+app.get("/api/chores/get", handleLoadChores);
+app.get("/api/chores/:clientId", handleLoadChores);
+
+function handleChoreAction(request, response) {
+  const { clientId, action, choreId: bodyChoreId } = request.body ?? {};
+  const choreId = bodyChoreId ?? request.params.choreId;
   const record = findChoreRecord(clientId);
-  const chore = record?.chores.find((item) => item.id === request.params.choreId);
+  const chore = record?.chores.find((item) => item.id === choreId);
   if (!record || !chore) return response.status(404).json({ message: "집안일을 찾을 수 없습니다." });
   if (!["complete", "snooze"].includes(action)) return response.status(400).json({ message: "지원하지 않는 알림 액션입니다." });
 
@@ -198,7 +203,11 @@ app.post("/api/chores/:choreId/actions", (request, response) => {
     : snoozeReminder(chore, today);
   updateStoredChore(clientId, updatedChore);
   return response.json({ chore: updatedChore });
-});
+}
+
+app.post("/api/chores/:choreId/actions", handleChoreAction);
+app.post("/api/chore-actions/:choreId", handleChoreAction);
+app.post("/api/chore-actions/run", handleChoreAction);
 
 async function deliverTestChorePush(clientId, choreId) {
   const record = findChoreRecord(clientId);

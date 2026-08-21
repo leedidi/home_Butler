@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@upstash/redis": "^1.38.2",
     "express": "^5.1.0",
     "web-push": "^3.6.7"
   },

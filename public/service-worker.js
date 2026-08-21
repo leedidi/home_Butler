@@ -53,10 +53,14 @@ self.addEventListener("notificationclick", (event) => {
 
     if (action === "complete" || action === "snooze") {
       try {
-        const response = await fetch(`/api/chores/${encodeURIComponent(notificationData.choreId)}/actions`, {
+        const response = await fetch("/api/chore-actions/run", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId: notificationData.clientId, action }),
+          body: JSON.stringify({
+            clientId: notificationData.clientId,
+            choreId: notificationData.choreId,
+            action,
+          }),
         });
         if (!response.ok) throw new Error("알림 액션 처리 실패");
         const result = await response.json();

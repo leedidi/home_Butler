@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/cron/push",
+      "schedule": "0 10 * * *"
+    }
+  ],
   "routes": [
     { "handle": "filesystem" },
     { "src": "/.*", "dest": "/index.html" }

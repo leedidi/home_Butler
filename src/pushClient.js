@@ -88,7 +88,7 @@ export async function syncChoresToPushServer(chores) {
 }
 
 export async function loadChoresFromPushServer() {
-  const response = await fetch(`/api/chores/${encodeURIComponent(getPushClientId())}`);
+  const response = await fetch(`/api/chores/get?clientId=${encodeURIComponent(getPushClientId())}`);
   if (response.status === 404) return null;
   const result = await readJsonResponse(response, "알림 서버의 집안일을 불러오지 못했습니다.");
   return result.chores;
