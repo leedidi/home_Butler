@@ -28,6 +28,7 @@ const reminderButlerImage = new URL("../assets/butler-variants/butler-reminder-t
 const app = document.querySelector("#app");
 const UNIT_LABELS = { day: "일", week: "주", month: "개월" };
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+const CUSTOM_CHORE_THEMES = ["mint", "blue", "lilac", "peach", "sky"];
 let calendarMonth = startOfMonth(new Date());
 
 function syncCurrentChores() {
@@ -85,8 +86,8 @@ function navigate(path) {
 
 function getChorePresentation(chore) {
   return CHORE_CATALOG.find((item) => item.id === chore.id) ?? {
-    icon: "✓",
-    theme: "blue",
+    icon: chore.icon ?? "✨",
+    theme: chore.theme ?? "blue",
   };
 }
 
@@ -539,25 +540,40 @@ function renderChoreDetail(choreId) {
 }
 
 function createManagementState() {
-  const existingById = new Map(loadChores().map((chore) => [chore.id, chore]));
-  return CHORE_CATALOG.map((item) => {
-    const existing = existingById.get(item.id);
-    if (!existing) return null;
+  const existingChores = loadChores();
+  const catalogIds = new Set(CHORE_CATALOG.map((item) => item.id));
+  const orderedChores = [
+    ...CHORE_CATALOG.map((item) => existingChores.find((chore) => chore.id === item.id)).filter(Boolean),
+    ...existingChores.filter((chore) => !catalogIds.has(chore.id)),
+  ];
+  return orderedChores.map((existing) => {
+    const catalogItem = CHORE_CATALOG.find((item) => item.id === existing.id);
+    const item = catalogItem ?? {
+      id: existing.id,
+      name: existing.name,
+      icon: existing.icon ?? "✨",
+      theme: existing.theme ?? "blue",
+      recommendedIntervalValue: existing.intervalValue,
+      recommendedIntervalUnit: existing.intervalUnit,
+      isCustom: true,
+    };
     return {
       ...item,
+      name: existing.name,
       selected: true,
       registered: true,
       expanded: false,
-      intervalValue: existing?.intervalValue ?? item.recommendedIntervalValue,
-      intervalUnit: existing?.intervalUnit ?? item.recommendedIntervalUnit,
-      lastCompletedDate: existing?.lastCompletedDate ?? "",
-      unknownLastCompletedDate: existing ? !existing.lastCompletedDate : false,
-      firstDueDate: existing && !existing.lastCompletedDate ? existing.nextDueDate : "",
-      createdAt: existing?.createdAt,
-      reminderSnoozedUntil: existing?.reminderSnoozedUntil ?? null,
-      isExample: existing?.isExample ?? false,
+      intervalValue: existing.intervalValue,
+      intervalUnit: existing.intervalUnit,
+      lastCompletedDate: existing.lastCompletedDate ?? "",
+      unknownLastCompletedDate: !existing.lastCompletedDate,
+      firstDueDate: !existing.lastCompletedDate ? existing.nextDueDate : "",
+      createdAt: existing.createdAt,
+      reminderSnoozedUntil: existing.reminderSnoozedUntil ?? null,
+      isExample: existing.isExample ?? false,
+      isCustom: existing.isCustom ?? !catalogItem,
     };
-  }).filter(Boolean);
+  });
 }
 
 function firstScheduleDate(action) {
@@ -582,13 +598,14 @@ function draftNextDueDate(item) {
 
 function renderInlineScheduleFields(item) {
   const nextDueDate = draftNextDueDate(item);
+  const safeName = escapeHtml(item.name);
   return `
-    <div class="registration-inline-fields" aria-label="${item.name} 일정 입력">
+    <div class="registration-inline-fields" aria-label="${safeName} 일정 입력">
       <section class="registration-inline-field">
         <div class="registration-inline-label">주기 <span>권장 ${item.recommendedIntervalValue}${UNIT_LABELS[item.recommendedIntervalUnit]}</span></div>
         <div class="registration-period-row">
-          <input type="number" min="1" inputmode="numeric" value="${item.intervalValue}" data-field="intervalValue" aria-label="${item.name} 주기 숫자" />
-          <select data-field="intervalUnit" aria-label="${item.name} 주기 단위">
+          <input type="number" min="1" inputmode="numeric" value="${item.intervalValue}" data-field="intervalValue" aria-label="${safeName} 주기 숫자" />
+          <select data-field="intervalUnit" aria-label="${safeName} 주기 단위">
             ${Object.entries(UNIT_LABELS).map(([value, label]) => `<option value="${value}"${item.intervalUnit === value ? " selected" : ""}>${label}</option>`).join("")}
           </select>
         </div>
@@ -599,13 +616,13 @@ function renderInlineScheduleFields(item) {
         </div>
         ${item.unknownLastCompletedDate
           ? `<input class="registration-date-input is-readonly" type="text" value="기억 안 남" aria-label="최근 완료일 기억 안 남" readonly />`
-          : `<input class="registration-date-input" type="date" max="${toDateOnly(new Date())}" value="${item.lastCompletedDate}" data-field="lastCompletedDate" aria-label="${item.name} 최근 완료일" />`}
+          : `<input class="registration-date-input" type="date" max="${toDateOnly(new Date())}" value="${item.lastCompletedDate}" data-field="lastCompletedDate" aria-label="${safeName} 최근 완료일" />`}
       </section>
       <section class="registration-inline-field">
         <div class="registration-inline-label">다음 예정일</div>
         ${item.unknownLastCompletedDate
-          ? `<input class="registration-date-input" type="date" value="${item.firstDueDate}" data-field="firstDueDate" aria-label="${item.name} 첫 예정일" />`
-          : `<input class="registration-date-input is-readonly" type="text" value="${nextDueDate}" placeholder="자동 계산" aria-label="${item.name} 자동 계산된 다음 예정일" readonly />`}
+          ? `<input class="registration-date-input" type="date" value="${item.firstDueDate}" data-field="firstDueDate" aria-label="${safeName} 첫 예정일" />`
+          : `<input class="registration-date-input is-readonly" type="text" value="${nextDueDate}" placeholder="자동 계산" aria-label="${safeName} 자동 계산된 다음 예정일" readonly />`}
       </section>
     </div>`;
 }
@@ -613,15 +630,20 @@ function renderInlineScheduleFields(item) {
 function renderManagementCard(item) {
   const marker = item.registered ? (item.expanded ? "⌃" : "⌄") : (item.selected ? "−" : "+");
   return `
-    <article class="chore-card theme-${item.theme}${item.selected ? " is-selected" : ""}${item.registered ? " is-registered" : ""}" data-chore-id="${item.id}">
+    <article class="chore-card theme-${item.theme}${item.selected ? " is-selected" : ""}${item.registered ? " is-registered" : ""}" data-chore-id="${escapeHtml(item.id)}">
       <button class="chore-selector" type="button" data-action="toggle-chore" aria-expanded="${item.expanded}">
         <span class="selection-circle" aria-hidden="true">${marker}</span>
         <span class="chore-icon" aria-hidden="true">${item.icon}</span>
-        <span class="chore-name">${item.name}</span>
+        <span class="chore-name">${escapeHtml(item.name)}</span>
         ${item.registered ? `<span class="registered-badge">관리 중</span>` : ""}
       </button>
       ${item.selected && item.expanded ? `
         <div class="chore-settings">
+          ${item.isCustom ? `
+            <label class="custom-management-name">
+              <span>집안일 이름</span>
+              <input type="text" maxlength="30" value="${escapeHtml(item.name)}" data-field="name" aria-label="직접 추가한 집안일 이름" />
+            </label>` : ""}
           ${renderInlineScheduleFields(item)}
           ${item.registered ? `<button class="delete-chore-button" type="button" data-action="delete-chore">이 목록에서 삭제</button>` : ""}
         </div>
@@ -672,6 +694,12 @@ function renderManage() {
       if (!item.selected || !item.expanded) return;
 
       card.querySelectorAll("[data-field]").forEach((field) => {
+        if (field.dataset.field === "name") {
+          field.addEventListener("input", () => {
+            item.name = field.value;
+          });
+          return;
+        }
         field.addEventListener("change", () => {
           item[field.dataset.field] = field.dataset.field === "intervalValue" ? Number(field.value) : field.value;
           paint();
@@ -711,12 +739,15 @@ function renderManage() {
       event.preventDefault();
       const selected = state.filter((item) => item.selected);
       const incomplete = selected.find((item) => (
-        !Number.isInteger(item.intervalValue)
+        !item.name.trim()
+        || !Number.isInteger(item.intervalValue)
         || item.intervalValue < 1
         || (item.unknownLastCompletedDate ? !item.firstDueDate : !item.lastCompletedDate)
       ));
       if (incomplete) {
-        app.querySelector("#form-error").textContent = `${incomplete.name}의 ${incomplete.unknownLastCompletedDate ? "첫 예정일" : "최근 완료일"}을 입력해 주세요.`;
+        app.querySelector("#form-error").textContent = !incomplete.name.trim()
+          ? "직접 추가한 집안일의 이름을 입력해 주세요."
+          : `${incomplete.name}의 ${incomplete.unknownLastCompletedDate ? "첫 예정일" : "최근 완료일"}을 입력해 주세요.`;
         return;
       }
 
@@ -741,6 +772,9 @@ function renderManage() {
           reminderSnoozedUntil: scheduleUnchanged ? existingChore.reminderSnoozedUntil : null,
           isActive: true,
           isExample: item.isExample,
+          isCustom: item.isCustom,
+          icon: item.icon,
+          theme: item.theme,
           createdAt: item.createdAt,
         });
       });
@@ -770,13 +804,46 @@ function createRegistrationState() {
   }));
 }
 
+function createCustomRegistrationItem(customIndex) {
+  const uniqueId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return {
+    id: `custom-${uniqueId}`,
+    name: "",
+    icon: "✨",
+    theme: CUSTOM_CHORE_THEMES[customIndex % CUSTOM_CHORE_THEMES.length],
+    isCustom: true,
+    selected: true,
+    intervalValue: 1,
+    intervalUnit: "month",
+    recommendedIntervalValue: 1,
+    recommendedIntervalUnit: "month",
+    lastCompletedDate: "",
+    unknownLastCompletedDate: false,
+    firstDueDate: "",
+  };
+}
+
 function renderChoreCard(item) {
+  if (item.isCustom) {
+    return `
+      <article class="chore-card custom-chore-card theme-${item.theme} is-selected" data-chore-id="${item.id}">
+        <div class="custom-chore-heading">
+          <span class="selection-circle" aria-hidden="true">✓</span>
+          <span class="chore-icon" aria-hidden="true">${item.icon}</span>
+          <input type="text" maxlength="30" value="${escapeHtml(item.name)}" placeholder="집안일 이름 입력" data-field="name" aria-label="직접 추가할 집안일 이름" />
+          <button type="button" data-action="remove-custom-chore" aria-label="직접 추가 항목 삭제">×</button>
+        </div>
+        <div class="chore-settings">
+          ${renderInlineScheduleFields({ ...item, name: item.name || "직접 추가한 집안일" })}
+        </div>
+      </article>`;
+  }
   return `
     <article class="chore-card${item.selected ? " is-selected" : ""}" data-chore-id="${item.id}">
       <button class="chore-selector" type="button" data-action="toggle-chore" aria-pressed="${item.selected}">
         <span class="selection-circle" aria-hidden="true">${item.selected ? "✓" : ""}</span>
         <span class="chore-icon" aria-hidden="true">${item.icon}</span>
-        <span>${item.name}</span>
+        <span>${escapeHtml(item.name)}</span>
       </button>
       ${item.selected ? `
         <div class="chore-settings">
@@ -798,6 +865,7 @@ function renderRegister() {
         </header>
         <form id="chore-form" novalidate>
           <div class="chore-list registration-chore-list">${state.map(renderChoreCard).join("")}</div>
+          <button class="add-custom-chore-button" type="button" data-action="add-custom-chore">+ 직접 집안일 추가</button>
           <div class="register-footer-copy">
             <img src="${workingButlerImage}" alt="새 집안일을 기록할 준비를 하는 우리집 집사" />
             <p>현재 등록한 내용은 이 기기에 저장돼요.</p>
@@ -810,15 +878,30 @@ function renderRegister() {
       </main>`;
 
     app.querySelector("[data-route]").addEventListener("click", () => navigate("/"));
+    app.querySelector("[data-action='add-custom-chore']").addEventListener("click", () => {
+      state.push(createCustomRegistrationItem(state.filter((item) => item.isCustom).length));
+      paint();
+      app.querySelector("[data-chore-id]:last-of-type input[data-field='name']")?.focus();
+    });
     app.querySelectorAll("[data-chore-id]").forEach((card) => {
       const item = state.find((candidate) => candidate.id === card.dataset.choreId);
-      card.querySelector("[data-action='toggle-chore']").addEventListener("click", () => {
+      card.querySelector("[data-action='toggle-chore']")?.addEventListener("click", () => {
         item.selected = !item.selected;
+        paint();
+      });
+      card.querySelector("[data-action='remove-custom-chore']")?.addEventListener("click", () => {
+        state.splice(state.indexOf(item), 1);
         paint();
       });
       if (!item.selected) return;
 
       card.querySelectorAll("[data-field]").forEach((field) => {
+        if (field.dataset.field === "name") {
+          field.addEventListener("input", () => {
+            item.name = field.value;
+          });
+          return;
+        }
         field.addEventListener("change", () => {
           item[field.dataset.field] = field.dataset.field === "intervalValue" ? Number(field.value) : field.value;
           paint();
@@ -852,12 +935,15 @@ function renderRegister() {
       event.preventDefault();
       const selected = state.filter((item) => item.selected);
       const incomplete = selected.find((item) => (
-        !Number.isInteger(item.intervalValue)
+        !item.name.trim()
+        || !Number.isInteger(item.intervalValue)
         || item.intervalValue < 1
         || (item.unknownLastCompletedDate ? !item.firstDueDate : !item.lastCompletedDate)
       ));
       if (incomplete) {
-        app.querySelector("#form-error").textContent = `${incomplete.name}의 ${incomplete.unknownLastCompletedDate ? "첫 예정일" : "최근 완료일"}을 입력해 주세요.`;
+        app.querySelector("#form-error").textContent = !incomplete.name.trim()
+          ? "직접 추가할 집안일의 이름을 입력해 주세요."
+          : `${incomplete.name}의 ${incomplete.unknownLastCompletedDate ? "첫 예정일" : "최근 완료일"}을 입력해 주세요.`;
         return;
       }
 
@@ -875,6 +961,9 @@ function renderRegister() {
           nextDueDate,
           reminderSnoozedUntil: null,
           isActive: true,
+          isCustom: item.isCustom,
+          icon: item.icon,
+          theme: item.theme,
           createdAt: existingById.get(item.id)?.createdAt,
         });
       });

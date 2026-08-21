@@ -136,3 +136,22 @@ test("관리 목록에서 삭제한 집안일은 재로딩 후에도 제거되�
 
   assert.deepEqual(loadChores(storage), [{ id: "aircon-filter", name: "에어컨 필터 청소" }]);
 });
+
+test("직접 추가한 집안일은 이름과 표시 색상을 포함해 다시 불러온다", () => {
+  const storage = memoryStorage();
+  const custom = createChore({
+    id: "custom-plant",
+    name: "화분 물주기",
+    intervalValue: 1,
+    intervalUnit: "week",
+    lastCompletedDate: "2026-08-21",
+    nextDueDate: "2026-08-28",
+    isCustom: true,
+    icon: "✨",
+    theme: "mint",
+    createdAt: "2026-08-21T09:00:00.000Z",
+  });
+
+  saveChores([custom], storage);
+  assert.deepEqual(loadChores(storage), [custom]);
+});

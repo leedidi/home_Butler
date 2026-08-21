@@ -27,6 +27,9 @@ const UNIT_ALIASES = Object.freeze({
  * @property {string|null} reminderSnoozedUntil 날짜만 포함한 YYYY-MM-DD 형식
  * @property {boolean} isActive
  * @property {boolean} isExample 실제 알림에서 제외되는 첫 방문용 예시 여부
+ * @property {boolean} [isCustom] 사용자가 직접 추가한 집안일 여부
+ * @property {string} [icon] 사용자 집안일 표시 아이콘
+ * @property {string} [theme] 사용자 집안일 표시 색상
  * @property {string} createdAt ISO 8601 날짜·시간 형식
  */
 
@@ -139,7 +142,7 @@ export function createChore(input) {
     throw new TypeError("createdAt은 유효한 ISO 날짜·시간이어야 합니다.");
   }
 
-  return {
+  const chore = {
     id: input.id ?? globalThis.crypto.randomUUID(),
     name: input.name.trim(),
     intervalValue: input.intervalValue,
@@ -151,6 +154,10 @@ export function createChore(input) {
     isExample: input.isExample ?? false,
     createdAt,
   };
+  if (input.isCustom) chore.isCustom = true;
+  if (typeof input.icon === "string" && input.icon) chore.icon = input.icon;
+  if (typeof input.theme === "string" && input.theme) chore.theme = input.theme;
+  return chore;
 }
 
 /** 완료일을 갱신하고 완료일 기준으로 다음 일정을 계산한다. */

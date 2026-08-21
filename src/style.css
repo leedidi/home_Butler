@@ -164,6 +164,12 @@ h1, h2 { font-weight: 700; }
 .chore-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .registered-badge { flex: 0 0 auto; margin-left: auto; border-radius: 999px; padding: 4px 8px; background: rgba(88, 101, 167, 0.1); color: #5965a7; font-size: 10px; }
 .chore-settings { padding: 0 14px 14px; }
+.custom-chore-heading { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 0; padding: 14px; }
+.custom-chore-heading .selection-circle { margin-right: 10px; background: #5865a7; }
+.custom-chore-heading input, .custom-management-name input { width: 100%; min-width: 0; height: 38px; border: 1px solid rgba(103, 108, 137, 0.22); border-radius: 12px; padding: 0 11px; background: rgba(255, 255, 255, 0.78); color: #252633; }
+.custom-chore-heading > button { display: grid; place-items: center; width: 34px; height: 34px; margin-left: 6px; border: 0; background: transparent; color: #8a6a6d; font-family: system-ui, sans-serif; font-size: 22px; }
+.custom-management-name { display: grid; gap: 6px; margin-bottom: 10px; color: #707382; font-size: 10px; }
+.add-custom-chore-button { width: 100%; margin-top: 12px; border: 1px dashed #aeb5d6; border-radius: 18px; padding: 14px; background: #f6f7fc; color: #56619a; }
 .schedule-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; margin-bottom: 14px; border: 1px solid rgba(103, 108, 137, 0.12); border-radius: 14px; background: rgba(255, 255, 255, 0.66); }
 .schedule-summary div { min-width: 0; padding: 9px 4px; text-align: center; }
 .schedule-summary div + div { border-left: 1px solid rgba(103, 108, 137, 0.12); }

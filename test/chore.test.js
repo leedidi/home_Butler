@@ -65,3 +65,17 @@ test("일과 주 단위 주기를 지원한다", () => {
   assert.equal(calculateNextDueDate("2026-06-18", 3, "일"), "2026-06-21");
   assert.equal(calculateNextDueDate("2026-06-18", 2, "주"), "2026-07-02");
 });
+
+test("직접 추가한 집안일의 아이콘과 색상 정보를 유지한다", () => {
+  const custom = sampleChore({
+    id: "custom-bedding",
+    name: "이불 털기",
+    isCustom: true,
+    icon: "✨",
+    theme: "peach",
+  });
+
+  assert.equal(custom.isCustom, true);
+  assert.equal(custom.icon, "✨");
+  assert.equal(custom.theme, "peach");
+});
