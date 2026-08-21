@@ -11,6 +11,7 @@ self.addEventListener("push", (event) => {
   const detailUrl = data.url ?? "/";
   const options = {
     body: data.body ?? "챙겨야 할 집안일이 있어요.",
+    icon: "/icons/butler-notification-512.png",
     tag: data.choreId ? `home-butler-${data.choreId}` : "home-butler-push",
     renotify: true,
     data: {
