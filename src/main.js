@@ -21,6 +21,7 @@ import {
 const splashButlerImage = new URL("../assets/butler-variants/main_default_pose.png", import.meta.url).href;
 const guideButlerImage = new URL("../assets/butler-variants/positive-01-thumbs-up.png", import.meta.url).href;
 const applauseButlerImage = new URL("../assets/butler-variants/positive-02-applause.png", import.meta.url).href;
+const cheerButlerImage = new URL("../assets/butler-variants/butler-cheer-transparent.png", import.meta.url).href;
 const workingButlerImage = new URL("../assets/butler-variants/butler-working-transparent.png", import.meta.url).href;
 const concernButlerImage = new URL("../assets/butler-variants/butler-concern-transparent.png", import.meta.url).href;
 const reminderButlerImage = new URL("../assets/butler-variants/butler-reminder-transparent.png", import.meta.url).href;
@@ -378,7 +379,7 @@ function handleRescheduleChore(chore, selectedDate, onDone) {
 
 function renderHome() {
   const chores = loadChores();
-  const homeButlerImage = chores.length === 0 ? concernButlerImage : guideButlerImage;
+  const homeButlerImage = chores.length === 0 ? concernButlerImage : cheerButlerImage;
   const upcoming = [...chores]
     .filter((chore) => chore.isActive)
     .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate))
@@ -394,7 +395,7 @@ function renderHome() {
         <button class="guide-button" type="button" aria-label="사용 방법"><span aria-hidden="true">ⓘ</span> 사용 방법</button>
       </header>
       <section class="butler-card">
-        <img src="${homeButlerImage}" alt="${chores.length === 0 ? "등록할 집안일을 기다리는 우리집 집사" : "집안일을 잘 챙기겠다고 엄지를 든 우리집 집사"}" />
+        <img src="${homeButlerImage}" alt="${chores.length === 0 ? "등록할 집안일을 기다리는 우리집 집사" : "집안일을 든든하게 챙기겠다고 주먹을 든 우리집 집사"}" />
         ${chores.length === 0 ? `
           <p class="butler-message">현재 관리 중인 집안일이 없어요.</p>
         ` : `
