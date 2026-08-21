@@ -144,26 +144,76 @@ function openDaySchedule(dateOnly, chores) {
   modal.className = "day-sheet-backdrop";
   modal.innerHTML = `
     <section class="day-sheet" role="dialog" aria-modal="true" aria-labelledby="day-sheet-title" tabindex="-1">
-      <div class="day-sheet-handle" aria-hidden="true"></div>
       <button class="day-sheet-close" type="button" data-action="close-day" aria-label="일정 목록 닫기">×</button>
       <header class="day-sheet-header">
         <h2 id="day-sheet-title">${month}월 ${day}일 일정</h2>
-        <span>${scheduledChores.length}개</span>
+        <span class="day-carousel-count" role="status" aria-live="polite">1 / ${scheduledChores.length}</span>
       </header>
-      <div class="day-schedule-list">
-        ${scheduledChores.map((chore) => {
-          const { icon, theme } = getChorePresentation(chore);
-          return `
-            <button class="day-schedule-item theme-${theme}" type="button" data-chore-id="${escapeHtml(chore.id)}">
-              <span class="day-schedule-icon" aria-hidden="true">${icon}</span>
-              <span class="day-schedule-copy"><strong>${escapeHtml(chore.name)}</strong><small>주기 ${chore.intervalValue}${UNIT_LABELS[chore.intervalUnit]}</small></span>
-              <span class="day-schedule-arrow" aria-hidden="true">›</span>
-            </button>`;
-        }).join("")}
+      <div class="day-carousel-shell">
+        <button class="day-carousel-arrow is-previous" type="button" data-action="previous-chore" aria-label="이전 집안일">‹</button>
+        <div class="day-carousel-viewport">
+          <div class="day-carousel-track">
+          ${scheduledChores.map((chore, index) => {
+           const { icon, theme } = getChorePresentation(chore);
+           return `
+            <article class="day-carousel-card theme-${theme}" data-carousel-card data-chore-id="${escapeHtml(chore.id)}" aria-label="${escapeHtml(chore.name)} 일정">
+              <div class="day-carousel-title">
+                <span class="day-schedule-icon" aria-hidden="true">${icon}</span>
+                <h3>${escapeHtml(chore.name)}</h3>
+              </div>
+              <dl class="day-carousel-details">
+                <div><dt>최근 완료일</dt><dd>${formatKoreanDate(chore.lastCompletedDate)}</dd></div>
+                <div><dt>주기</dt><dd>${chore.intervalValue}${UNIT_LABELS[chore.intervalUnit]}</dd></div>
+                <div><dt>현재 예정일</dt><dd>${formatKoreanDate(chore.nextDueDate)}</dd></div>
+                ${chore.reminderSnoozedUntil ? `<div><dt>다시 알림 받을 날</dt><dd>${formatKoreanDate(chore.reminderSnoozedUntil)}</dd></div>` : ""}
+              </dl>
+              <p class="day-carousel-help">완료한 날을 기준으로 다음 일정을 자동으로 계산해드려요.</p>
+              <div class="detail-actions">
+                <button class="primary-button complete-button" type="button" data-action="complete-today">오늘 완료했어</button>
+                <button class="secondary-button" type="button" data-action="snooze-tomorrow">내일 알려줘</button>
+                <button class="text-button" type="button" data-action="show-reschedule">다른 날로 미룰게</button>
+              </div>
+              <form class="reschedule-panel" data-reschedule-form hidden>
+                <label for="day-reschedule-date-${index}">새로운 예정일</label>
+                <div class="reschedule-row">
+                  <input id="day-reschedule-date-${index}" name="rescheduleDate" type="date" min="${toDateOnly(new Date())}" required />
+                  <button class="primary-button reschedule-submit" type="submit">변경하기</button>
+                </div>
+              </form>
+            </article>`;
+         }).join("")}
+          </div>
+        </div>
+        <button class="day-carousel-arrow is-next" type="button" data-action="next-chore" aria-label="다음 집안일">›</button>
+      </div>
+      <div class="day-carousel-dots" aria-hidden="true">
+        ${scheduledChores.map((_, index) => `<span class="${index === 0 ? "is-active" : ""}"></span>`).join("")}
       </div>
     </section>`;
 
   const modalPanel = modal.querySelector(".day-sheet");
+  const track = modal.querySelector(".day-carousel-track");
+  const cards = [...modal.querySelectorAll("[data-carousel-card]")];
+  const count = modal.querySelector(".day-carousel-count");
+  const previousButton = modal.querySelector("[data-action='previous-chore']");
+  const nextButton = modal.querySelector("[data-action='next-chore']");
+  const dots = [...modal.querySelectorAll(".day-carousel-dots span")];
+  let currentIndex = 0;
+  let pointerStartX = null;
+
+  const showCard = (nextIndex) => {
+    currentIndex = Math.max(0, Math.min(nextIndex, cards.length - 1));
+    track.style.transform = `translateX(-${currentIndex * 100}%)`;
+    count.textContent = `${currentIndex + 1} / ${cards.length}`;
+    previousButton.disabled = currentIndex === 0;
+    nextButton.disabled = currentIndex === cards.length - 1;
+    dots.forEach((dot, index) => dot.classList.toggle("is-active", index === currentIndex));
+    cards.forEach((card, index) => {
+      const isCurrent = index === currentIndex;
+      card.setAttribute("aria-hidden", isCurrent ? "false" : "true");
+      card.inert = !isCurrent;
+    });
+  };
   const closeModal = (restoreFocus = true) => {
     document.removeEventListener("keydown", handleKeydown);
     document.body.classList.remove("is-day-sheet-open");
@@ -172,23 +222,56 @@ function openDaySchedule(dateOnly, chores) {
   };
   const handleKeydown = (event) => {
     if (event.key === "Escape") closeModal();
+    if (event.key === "ArrowLeft") showCard(currentIndex - 1);
+    if (event.key === "ArrowRight") showCard(currentIndex + 1);
   };
 
   modal.querySelector("[data-action='close-day']").addEventListener("click", () => closeModal());
   modal.addEventListener("click", (event) => {
     if (event.target === modal) closeModal();
   });
-  modal.querySelectorAll("[data-chore-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const choreId = button.dataset.choreId;
+  previousButton.addEventListener("click", () => showCard(currentIndex - 1));
+  nextButton.addEventListener("click", () => showCard(currentIndex + 1));
+  modal.querySelector(".day-carousel-viewport").addEventListener("pointerdown", (event) => {
+    pointerStartX = event.clientX;
+  });
+  modal.querySelector(".day-carousel-viewport").addEventListener("pointerup", (event) => {
+    if (pointerStartX === null) return;
+    const distance = event.clientX - pointerStartX;
+    pointerStartX = null;
+    if (Math.abs(distance) < 45) return;
+    showCard(currentIndex + (distance < 0 ? 1 : -1));
+  });
+  modal.querySelector(".day-carousel-viewport").addEventListener("pointercancel", () => {
+    pointerStartX = null;
+  });
+  cards.forEach((card, index) => {
+    const chore = scheduledChores[index];
+    card.querySelector("[data-action='complete-today']").addEventListener("click", () => {
       closeModal(false);
-      navigate(`/chores/${encodeURIComponent(choreId)}`);
+      handleCompleteChore(chore, renderHome);
+    });
+    card.querySelector("[data-action='snooze-tomorrow']").addEventListener("click", () => {
+      closeModal(false);
+      handleSnoozeChore(chore, renderHome);
+    });
+    const reschedulePanel = card.querySelector("[data-reschedule-form]");
+    card.querySelector("[data-action='show-reschedule']").addEventListener("click", () => {
+      reschedulePanel.hidden = !reschedulePanel.hidden;
+      if (!reschedulePanel.hidden) reschedulePanel.querySelector("input").focus();
+    });
+    reschedulePanel.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const selectedDate = new FormData(reschedulePanel).get("rescheduleDate");
+      closeModal(false);
+      handleRescheduleChore(chore, selectedDate, renderHome);
     });
   });
   document.addEventListener("keydown", handleKeydown);
   document.body.classList.add("is-day-sheet-open");
   document.body.append(modal);
-  modalPanel.focus();
+  showCard(0);
+  modalPanel.focus({ preventScroll: true });
 }
 
 function openGuideModal() {
@@ -250,6 +333,47 @@ function showButlerFeedback({ image, alt, title, message, onDone }) {
       onDone();
     }, 180);
   }, 1_200);
+}
+
+function setCalendarMonthFromDate(dateOnly) {
+  const [year, month] = dateOnly.split("-").map(Number);
+  calendarMonth = new Date(year, month - 1, 1);
+}
+
+function handleCompleteChore(chore, onDone) {
+  const completed = persistChore(completeChore(chore, toDateOnly(new Date())));
+  setCalendarMonthFromDate(completed.nextDueDate);
+  showButlerFeedback({
+    image: applauseButlerImage,
+    alt: "완료를 축하하며 박수치는 우리집 집사",
+    title: "수고하셨어요!",
+    message: "완료한 오늘을 기준으로 다음 일정도 챙겨둘게요.",
+    onDone,
+  });
+}
+
+function handleSnoozeChore(chore, onDone) {
+  persistChore(snoozeReminder(chore, toDateOnly(new Date())));
+  setCalendarMonthFromDate(chore.nextDueDate);
+  showButlerFeedback({
+    image: reminderButlerImage,
+    alt: "내일 다시 알려주겠다고 손가락을 든 우리집 집사",
+    title: "내일 다시 알려드릴게요.",
+    message: "예정일과 최근 완료일은 그대로 유지했어요.",
+    onDone,
+  });
+}
+
+function handleRescheduleChore(chore, selectedDate, onDone) {
+  const rescheduled = persistChore(rescheduleChore(chore, selectedDate));
+  setCalendarMonthFromDate(rescheduled.nextDueDate);
+  showButlerFeedback({
+    image: workingButlerImage,
+    alt: "새 일정을 기록하는 우리집 집사",
+    title: "새 날짜를 기록했어요.",
+    message: "선택한 날에 다시 챙겨드릴게요.",
+    onDone,
+  });
 }
 
 function renderHome() {
@@ -391,29 +515,10 @@ function renderChoreDetail(choreId) {
 
   app.querySelector("[data-route]").addEventListener("click", () => navigate("/"));
   app.querySelector("[data-action='complete-today']").addEventListener("click", () => {
-    const completed = completeChore(chore, toDateOnly(new Date()));
-    persistChore(completed);
-    const [year, month] = completed.nextDueDate.split("-").map(Number);
-    calendarMonth = new Date(year, month - 1, 1);
-    showButlerFeedback({
-      image: applauseButlerImage,
-      alt: "완료를 축하하며 박수치는 우리집 집사",
-      title: "수고하셨어요!",
-      message: "완료한 오늘을 기준으로 다음 일정도 챙겨둘게요.",
-      onDone: () => navigate("/"),
-    });
+    handleCompleteChore(chore, () => navigate("/"));
   });
   app.querySelector("[data-action='snooze-tomorrow']").addEventListener("click", () => {
-    persistChore(snoozeReminder(chore, toDateOnly(new Date())));
-    const [year, month] = chore.nextDueDate.split("-").map(Number);
-    calendarMonth = new Date(year, month - 1, 1);
-    showButlerFeedback({
-      image: reminderButlerImage,
-      alt: "내일 다시 알려주겠다고 손가락을 든 우리집 집사",
-      title: "내일 다시 알려드릴게요.",
-      message: "예정일과 최근 완료일은 그대로 유지했어요.",
-      onDone: () => navigate("/"),
-    });
+    handleSnoozeChore(chore, () => navigate("/"));
   });
 
   const reschedulePanel = app.querySelector("[data-reschedule-form]");
@@ -424,17 +529,7 @@ function renderChoreDetail(choreId) {
   reschedulePanel.addEventListener("submit", (event) => {
     event.preventDefault();
     const selectedDate = new FormData(reschedulePanel).get("rescheduleDate");
-    const rescheduled = rescheduleChore(chore, selectedDate);
-    persistChore(rescheduled);
-    const [year, month] = rescheduled.nextDueDate.split("-").map(Number);
-    calendarMonth = new Date(year, month - 1, 1);
-    showButlerFeedback({
-      image: workingButlerImage,
-      alt: "새 일정을 기록하는 우리집 집사",
-      title: "새 날짜를 기록했어요.",
-      message: "선택한 날에 다시 챙겨드릴게요.",
-      onDone: () => navigate("/"),
-    });
+    handleRescheduleChore(chore, selectedDate, () => navigate("/"));
   });
   if (new URLSearchParams(window.location.search).get("reschedule") === "1") {
     reschedulePanel.hidden = false;
