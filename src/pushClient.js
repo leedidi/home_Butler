@@ -1,4 +1,17 @@
 const PUSH_CLIENT_ID_KEY = "home-butler:push-client-id:v1";
+const PUSH_SERVER_UNAVAILABLE_MESSAGE = "알림 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.";
+
+export async function readJsonResponse(response, errorMessage = PUSH_SERVER_UNAVAILABLE_MESSAGE) {
+  if (!response.ok) throw new Error(errorMessage);
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    throw new Error(PUSH_SERVER_UNAVAILABLE_MESSAGE);
+  }
+  try {
+    return await response.json();
+  } catch {
+    throw new Error(PUSH_SERVER_UNAVAILABLE_MESSAGE);
+  }
+}
 
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -71,14 +84,13 @@ export async function syncChoresToPushServer(chores) {
     }),
   });
   if (!response.ok) throw new Error("알림 서버에 집안일을 저장하지 못했습니다.");
-  return response.json();
+  return readJsonResponse(response);
 }
 
 export async function loadChoresFromPushServer() {
   const response = await fetch(`/api/chores/${encodeURIComponent(getPushClientId())}`);
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error("알림 서버의 집안일을 불러오지 못했습니다.");
-  const result = await response.json();
+  const result = await readJsonResponse(response, "알림 서버의 집안일을 불러오지 못했습니다.");
   return result.chores;
 }
 
@@ -89,8 +101,7 @@ export async function enablePushNotifications(chores) {
   if (permission !== "granted") throw new Error("알림 권한이 허용되지 않았습니다.");
 
   const keyResponse = await fetch("/api/push/public-key");
-  if (!keyResponse.ok) throw new Error("알림 서버 공개 키를 가져오지 못했습니다.");
-  const { publicKey } = await keyResponse.json();
+  const { publicKey } = await readJsonResponse(keyResponse, "알림 서버 공개 키를 가져오지 못했습니다.");
   const existingSubscription = await registration.pushManager.getSubscription();
   const subscription = existingSubscription ?? await registration.pushManager.subscribe({
     userVisibleOnly: true,
