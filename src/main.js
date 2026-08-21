@@ -19,6 +19,7 @@ import {
 } from "./pushClient.js";
 
 const butlerImage = new URL("../assets/butler-variants/main_default_pose.png", import.meta.url).href;
+const guideButlerImage = new URL("../assets/butler-variants/positive-01-thumbs-up.png", import.meta.url).href;
 const app = document.querySelector("#app");
 const UNIT_LABELS = { day: "일", week: "주", month: "개월" };
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -119,6 +120,45 @@ function renderCalendar(chores) {
     </section>`;
 }
 
+function openGuideModal() {
+  const modal = document.createElement("div");
+  modal.className = "guide-modal-backdrop";
+  modal.innerHTML = `
+    <section class="guide-modal" role="dialog" aria-modal="true" aria-labelledby="guide-title" aria-describedby="guide-intro" tabindex="-1">
+      <button class="guide-modal-close" type="button" data-action="close-guide" aria-label="사용 방법 닫기">×</button>
+      <h2 id="guide-title">사용 방법</h2>
+      <img class="guide-modal-image" src="${guideButlerImage}" alt="엄지를 들어 안내하는 우리집 집사" />
+      <p id="guide-intro" class="guide-modal-intro">한 번 맡겨두면, 제가 기억하고 챙겨드릴게요.</p>
+      <ol class="guide-steps">
+        <li><span>1</span><div><h3>한 번만 맡겨주세요</h3><p>관리할 집안일과 주기를 등록하면 끝이에요.</p></div></li>
+        <li><span>2</span><div><h3>집사가 기억해요</h3><p>마지막으로 한 날에 주기를 더해 다음 날짜를 계산해요.</p></div></li>
+        <li><span>3</span><div><h3>때가 되면 알려드려요</h3><p>알림을 켜두면 챙길 날에 조용히 알려드려요.</p></div></li>
+        <li><span>4</span><div><h3>완료 한 번이면 끝</h3><p>‘오늘 완료했어’를 누르면 다음 일정이 자동으로 잡혀요.</p></div></li>
+      </ol>
+    </section>`;
+
+  const modalPanel = modal.querySelector(".guide-modal");
+  const closeButton = modal.querySelector("[data-action='close-guide']");
+  const closeModal = () => {
+    document.removeEventListener("keydown", handleKeydown);
+    document.body.classList.remove("is-guide-open");
+    modal.remove();
+    app.querySelector(".guide-button")?.focus();
+  };
+  const handleKeydown = (event) => {
+    if (event.key === "Escape") closeModal();
+  };
+
+  closeButton.addEventListener("click", closeModal);
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) closeModal();
+  });
+  document.addEventListener("keydown", handleKeydown);
+  document.body.classList.add("is-guide-open");
+  document.body.append(modal);
+  modalPanel.focus();
+}
+
 function renderHome() {
   const chores = loadChores();
   const upcoming = [...chores]
@@ -170,6 +210,7 @@ function renderHome() {
   app.querySelectorAll("[data-route]").forEach((element) => {
     element.addEventListener("click", () => navigate(element.dataset.route));
   });
+  app.querySelector(".guide-button").addEventListener("click", openGuideModal);
   app.querySelectorAll(".calendar-event[data-chore-id]").forEach((eventButton) => {
     eventButton.addEventListener("click", () => {
       navigate(`/chores/${encodeURIComponent(eventButton.dataset.choreId)}`);
